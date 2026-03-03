@@ -23,7 +23,7 @@
       "Microsoft が事業展開する国の数"
     ],
     "answer": 1,
-    "explanation": "75はAzureのリージョン数の概数です。Azureは世界中に60以上のリージョンを展開しており、他のどのクラウドプロバイダーよりも多い地域をカバーしています。"
+    "explanation": "75はMicrosoft Azureのリージョン数の概数です。Microsoft Azureは世界中に60以上のリージョンを展開しており、他のどのクラウドプロバイダーよりも多い地域をカバーしています。"
   },
   {
     "id": 3,
@@ -114,7 +114,7 @@
       "Excel の初版がリリースされた年"
     ],
     "answer": 1,
-    "explanation": "1985年は初代Windows（Windows 1.0）が発売された年です。GUIを搭載したオペレーティング環境として登場し、後にPC市場を席巻しました。"
+    "explanation": "1985年はMicrosoftの初代Windows（Windows 1.0）が発売された年です。GUIを搭載したオペレーティング環境として登場し、後にPC市場を席巻しました。"
   },
   {
     "id": 10,
