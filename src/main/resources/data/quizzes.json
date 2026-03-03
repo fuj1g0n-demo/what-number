@@ -1,41 +1,132 @@
 [
   {
     "id": 1,
-    "number": "3,776",
+    "number": "1975",
     "question": "この数字、なんの数字？",
     "choices": [
-      "東京スカイツリーの高さ（メートル）",
-      "富士山の標高（メートル）",
-      "日本の島の数",
-      "東京タワーの高さ（メートル）"
+      "Microsoft が設立された年",
+      "Windows 1.0 が発売された年",
+      "IBM PC が発売された年",
+      "インターネットが一般公開された年"
     ],
-    "answer": 1,
-    "explanation": "3,776メートルは富士山の標高です。日本で最も高い山として知られています。"
+    "answer": 0,
+    "explanation": "1975年はMicrosoftが設立された年です。ビル・ゲイツとポール・アレンがニューメキシコ州アルバカーキで共同創業しました。"
   },
   {
     "id": 2,
-    "number": "47",
+    "number": "75",
     "question": "この数字、なんの数字？",
     "choices": [
-      "日本のプロ野球チーム数",
-      "日本の世界遺産の数",
-      "日本の都道府県の数",
-      "日本の政令指定都市の数"
+      "Microsoft 365のアプリ数",
+      "Azureのリージョン数（60以上ある地域の概数）",
+      "Windowsの累計バージョン数",
+      "Microsoft が事業展開する国の数"
     ],
-    "answer": 2,
-    "explanation": "47は日本の都道府県の数です。1都1道2府43県で構成されています。"
+    "answer": 1,
+    "explanation": "75はAzureのリージョン数の概数です。Azureは世界中に60以上のリージョンを展開しており、他のどのクラウドプロバイダーよりも多い地域をカバーしています。"
   },
   {
     "id": 3,
-    "number": "634",
+    "number": "75億",
     "question": "この数字、なんの数字？",
     "choices": [
-      "東京タワーの高さ（メートル）",
-      "日本一長い川の長さ（キロメートル）",
-      "東京スカイツリーの高さ（メートル）",
-      "日本で一番深い湖の深さ（メートル）"
+      "Microsoft の2024年度の年間売上高（ドル）",
+      "GitHub のリポジトリ総数",
+      "Microsoft がGitHub を買収した金額（ドル）",
+      "Xbox の累計販売台数"
     ],
     "answer": 2,
-    "explanation": "634メートルは東京スカイツリーの高さです。「むさし（634）」の語呂合わせでも知られています。"
+    "explanation": "75億ドル（約7,500億円）は、2018年にMicrosoftがGitHubを買収した金額です。これはMicrosoft史上最大級の買収の一つでした。"
+  },
+  {
+    "id": 4,
+    "number": "262億",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Microsoft がActivision Blizzardを買収した金額（ドル）",
+      "Microsoft がLinkedInを買収した金額（ドル）",
+      "Azureの年間売上高（ドル）",
+      "Microsoft の時価総額（ドル）"
+    ],
+    "answer": 1,
+    "explanation": "262億ドル（約2.9兆円）は、2016年にMicrosoftがLinkedInを買収した金額です。当時、Microsoft史上最大の買収案件でした。"
+  },
+  {
+    "id": 5,
+    "number": "2001",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Windows XP が発売された年",
+      "初代 Xbox が発売された年",
+      "Microsoft Azure が発表された年",
+      "Internet Explorer 6 がリリースされた年"
+    ],
+    "answer": 1,
+    "explanation": "2001年は初代Xboxが北米で発売された年です。MicrosoftがSONYのPlayStation 2に対抗して家庭用ゲーム機市場に参入しました。"
+  },
+  {
+    "id": 6,
+    "number": "4億",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Outlook のユーザー数",
+      "Xbox Game Pass の加入者数",
+      "Microsoft Teams の月間アクティブユーザー数",
+      "Microsoft 365 の有料サブスクリプション数"
+    ],
+    "answer": 2,
+    "explanation": "4億人はMicrosoft Teamsの月間アクティブユーザー数の概数です。COVID-19パンデミック以降、リモートワークの拡大に伴い急速に普及しました。"
+  },
+  {
+    "id": 7,
+    "number": "228,000",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Microsoft の全世界の従業員数（概数）",
+      "Azure のサービス数",
+      "Microsoft が保有する特許の数",
+      "Microsoft 本社キャンパスの面積（平方メートル）"
+    ],
+    "answer": 0,
+    "explanation": "約228,000人はMicrosoftの全世界の従業員数です。世界各地にオフィスを構え、多様な製品・サービスの開発・運用を行っています。"
+  },
+  {
+    "id": 8,
+    "number": "690億",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Microsoft がNokiaの携帯電話事業を買収した金額（ドル）",
+      "Microsoft がActivision Blizzardを買収した金額（ドル）",
+      "Microsoft の年間研究開発費（ドル）",
+      "Windows 11 のインストール数"
+    ],
+    "answer": 1,
+    "explanation": "690億ドル（約10兆円）は、2023年にMicrosoftがActivision Blizzardを買収した金額です。ゲーム業界史上最大の買収となりました。"
+  },
+  {
+    "id": 9,
+    "number": "1985",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "MS-DOS が発売された年",
+      "初代 Windows が発売された年",
+      "Microsoft が株式を上場した年",
+      "Excel の初版がリリースされた年"
+    ],
+    "answer": 1,
+    "explanation": "1985年は初代Windows（Windows 1.0）が発売された年です。GUIを搭載したオペレーティング環境として登場し、後にPC市場を席巻しました。"
+  },
+  {
+    "id": 10,
+    "number": "100億",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Microsoft がOpenAIに投資した累計額（ドル）の概数",
+      "Bing の月間検索クエリ数",
+      "Microsoft Store のアプリ総数",
+      "OneDrive のユーザー数"
+    ],
+    "answer": 0,
+    "explanation": "約100億ドル以上は、MicrosoftがOpenAIに投資した累計額の概数です。この提携により、Azure OpenAI ServiceやCopilotなどAI関連製品・サービスが誕生しました。"
   }
 ]
