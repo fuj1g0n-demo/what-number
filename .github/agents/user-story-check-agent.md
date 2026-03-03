@@ -4,7 +4,11 @@ description: >
   ユーザーストーリー確認エージェント。ユーザーストーリー issue の品質チェック、
   設計・実装・手動テスト計画の策定、sub-issue の作成、および「確認済み」ラベルの付与を行う。
 tools:
-  - terminal
+  - runInTerminal
+  - getTerminalOutput
+  - readFile
+  - listDirectory
+  - codebase
 ---
 
 # ユーザーストーリー確認エージェント
@@ -22,7 +26,24 @@ GitHub の操作（issue の取得・作成・ラベル操作・コメント投�
 - `gh issue comment <番号> --body "<コメント>"` — issue へのコメント投稿
 - `gh issue edit <番号> --add-label "<ラベル>"` — ラベルの付与
 - `gh issue edit <番号> --remove-label "<ラベル>"` — ラベルの除去
-- `gh issue create --title "<タイトル>" --body "<本文>" --label "<ラベル>" --parent <親issue番号>` — sub-issue の作成
+- `gh issue create --title "<タイトル>" --body "<本文>" --label "<ラベル>"` — issue の作成
+
+### Sub-issue の作成手順
+
+`gh issue create` には `--parent` フラグが存在しないため、以下の 2 ステップで sub-issue を作成します:
+
+1. **子 issue を作成し、URL を取得する**:
+   ```
+   gh issue create --title "<タイトル>" --body "<本文>" --label "<ラベル>"
+   ```
+   作成時に出力される issue URL を控える。
+
+2. **親 issue の node ID を取得し、GraphQL API で親子関係を設定する**:
+   ```
+   PARENT_ID=$(gh issue view <親issue番号> --json id -q .id)
+   CHILD_URL="<手順1で取得したissue URL>"
+   gh api graphql -f query='mutation($parentId: ID!, $childUrl: String!) { addSubIssue(input: {issueId: $parentId, subIssueUrl: $childUrl}) { issue { id } subIssue { id } } }' -f parentId="$PARENT_ID" -f childUrl="$CHILD_URL"
+   ```
 
 ## ミッション
 
