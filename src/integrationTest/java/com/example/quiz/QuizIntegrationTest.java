@@ -9,7 +9,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -35,7 +35,6 @@ class QuizIntegrationTest {
 
     @Test
     void quizPage_displaysNumberAndChoices() throws Exception {
-        // クイズ1: Microsoft創業年 "1975"
         MvcResult result = mockMvc.perform(get("/quiz/1"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("quiz"))
@@ -48,8 +47,7 @@ class QuizIntegrationTest {
     }
 
     @Test
-    void quizPage_eachQuizAccessible() throws Exception {
-        // 全10問にアクセスできることを検証
+    void quizPage_eachQuizLoadsSuccessfully() throws Exception {
         for (int id = 1; id <= 10; id++) {
             mockMvc.perform(get("/quiz/" + id))
                     .andExpect(status().isOk())
@@ -59,8 +57,8 @@ class QuizIntegrationTest {
     }
 
     @Test
-    void answerQuiz_correctAnswer_showsCorrectResult() throws Exception {
-        // クイズ1の正解は answer=0
+    void answer_correctAnswer_showsCorrectResultAndExplanation() throws Exception {
+        // Quiz 1: answer index is 0
         MvcResult result = mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "0"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("result"))
@@ -73,9 +71,9 @@ class QuizIntegrationTest {
     }
 
     @Test
-    void answerQuiz_wrongAnswer_showsIncorrectResult() throws Exception {
-        // クイズ1の不正解（answer=0なので、3を選択）
-        MvcResult result = mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "3"))
+    void answer_wrongAnswer_showsIncorrectResultAndExplanation() throws Exception {
+        // Quiz 1: answer index is 0, so selecting 1 is wrong
+        MvcResult result = mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "1"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("result"))
                 .andExpect(model().attribute("correct", false))

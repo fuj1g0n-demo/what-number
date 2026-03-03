@@ -5,7 +5,6 @@ import org.junit.jupiter.api.*;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -16,7 +15,6 @@ import static org.junit.jupiter.api.Assertions.*;
  * デフォルトでは http://localhost:8080 に接続する。
  * スクリーンショットは build/screenshots/ に保存される。
  */
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class QuizSystemTest {
 
     private static final String BASE_URL = System.getProperty("test.base-url", "http://localhost:8080");
@@ -54,7 +52,6 @@ class QuizSystemTest {
      * Scenario: トップページに 10 問のクイズが一覧表示される
      */
     @Test
-    @Order(1)
     void scenario1_topPage_displays10Quizzes() {
         try (Page page = browser.newPage()) {
             // Given ユーザーがトップページにアクセスする
@@ -86,7 +83,6 @@ class QuizSystemTest {
      * Scenario: クイズに挑戦して正解する
      */
     @Test
-    @Order(2)
     void scenario2_answerQuiz_correctly() {
         try (Page page = browser.newPage()) {
             // Given ユーザーがトップページにアクセスする
@@ -129,7 +125,6 @@ class QuizSystemTest {
      * Scenario: クイズに挑戦して不正解になる
      */
     @Test
-    @Order(3)
     void scenario3_answerQuiz_incorrectly() {
         try (Page page = browser.newPage()) {
             // Given ユーザーがトップページにアクセスする
@@ -165,7 +160,6 @@ class QuizSystemTest {
      * Scenario: すべてのクイズが Microsoft に関連する内容である
      */
     @Test
-    @Order(4)
     void scenario4_allQuizzes_areMicrosoftRelated() {
         try (Page page = browser.newPage()) {
             // Given ユーザーがトップページにアクセスする

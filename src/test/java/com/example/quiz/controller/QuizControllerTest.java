@@ -27,8 +27,7 @@ class QuizControllerTest {
 
     private final Quiz sampleQuiz = new Quiz(
             1, "1975", "この数字、なんの数字？",
-            List.of("Microsoft が設立された年", "Windows 1.0 が発売された年",
-                    "IBM PC が発売された年", "インターネットが一般公開された年"),
+            List.of("Microsoft が設立された年", "Windows 1.0 が発売された年", "MS-DOS が発表された年", "Xbox が発売された年"),
             0, "1975年はMicrosoftが設立された年です。"
     );
 
@@ -63,17 +62,5 @@ class QuizControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(view().name("result"))
                 .andExpect(model().attribute("correct", true));
-    }
-
-    @Test
-    void answer_wrongAnswer_showsIncorrectResult() throws Exception {
-        when(quizService.getQuizById(1)).thenReturn(Optional.of(sampleQuiz));
-        when(quizService.checkAnswer(1, 3)).thenReturn(false);
-        when(quizService.getTotalCount()).thenReturn(10);
-
-        mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "3"))
-                .andExpect(status().isOk())
-                .andExpect(view().name("result"))
-                .andExpect(model().attribute("correct", false));
     }
 }
