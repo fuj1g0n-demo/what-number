@@ -1,0 +1,48 @@
+name: "\U0001F3D7️ 設計"
+description: "要件・基本設計・アーキテクチャの追加・変更"
+labels: ["design"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 設計 Issue
+        この issue はユーザーストーリーの sub-issue として作成してください。
+
+  - type: input
+    id: parent-issue
+    attributes:
+      label: 親ユーザーストーリー
+      description: "親となるユーザーストーリー issue の番号を入力してください"
+      placeholder: "#42"
+    validations:
+      required: true
+
+  - type: textarea
+    id: design-target
+    attributes:
+      label: 設計対象
+      description: "この設計で対処する内容を記述してください"
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected-documents
+    attributes:
+      label: 変更対象ドキュメント
+      description: |
+        追加・変更が必要なドキュメントを記載してください。
+        ドキュメントは docs/specs/（要件）または docs/design/（基本設計・アーキテクチャ）に配置します。
+        ※ ドキュメントにコード例を含めてはいけません。
+      placeholder: |
+        - docs/specs/quiz-requirements.md（新規作成）
+        - docs/design/api-architecture.md（更新）
+    validations:
+      required: true
+
+  - type: textarea
+    id: design-policy
+    attributes:
+      label: 設計方針
+      description: "設計の方針・方向性を記述してください"
+    validations:
+      required: true
