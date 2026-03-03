@@ -26,9 +26,9 @@ class QuizControllerTest {
     private QuizService quizService;
 
     private final Quiz sampleQuiz = new Quiz(
-            1, "3,776", "この数字、なんの数字？",
-            List.of("スカイツリー", "富士山", "島の数", "東京タワー"),
-            1, "富士山の標高です。"
+            1, "1975", "この数字、なんの数字？",
+            List.of("Microsoft が設立された年", "Windows 1.0 が発売された年", "MS-DOS が発表された年", "Xbox が発売された年"),
+            0, "1975年はMicrosoftが設立された年です。"
     );
 
     @Test
@@ -44,7 +44,7 @@ class QuizControllerTest {
     @Test
     void showQuiz_existingId_displaysQuiz() throws Exception {
         when(quizService.getQuizById(1)).thenReturn(Optional.of(sampleQuiz));
-        when(quizService.getTotalCount()).thenReturn(1);
+        when(quizService.getTotalCount()).thenReturn(10);
 
         mockMvc.perform(get("/quiz/1"))
                 .andExpect(status().isOk())
@@ -55,10 +55,10 @@ class QuizControllerTest {
     @Test
     void answer_correctAnswer_showsResult() throws Exception {
         when(quizService.getQuizById(1)).thenReturn(Optional.of(sampleQuiz));
-        when(quizService.checkAnswer(1, 1)).thenReturn(true);
-        when(quizService.getTotalCount()).thenReturn(1);
+        when(quizService.checkAnswer(1, 0)).thenReturn(true);
+        when(quizService.getTotalCount()).thenReturn(10);
 
-        mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "1"))
+        mockMvc.perform(post("/quiz/1/answer").param("selectedAnswer", "0"))
                 .andExpect(status().isOk())
                 .andExpect(view().name("result"))
                 .andExpect(model().attribute("correct", true));

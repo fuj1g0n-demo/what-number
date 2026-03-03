@@ -1,41 +1,132 @@
 [
   {
     "id": 1,
-    "number": "3,776",
+    "number": "1975",
     "question": "この数字、なんの数字？",
     "choices": [
-      "東京スカイツリーの高さ（メートル）",
-      "富士山の標高（メートル）",
-      "日本の島の数",
-      "東京タワーの高さ（メートル）"
+      "Microsoft が設立された年",
+      "Windows 1.0 が発売された年",
+      "MS-DOS が発表された年",
+      "Xbox が発売された年"
     ],
-    "answer": 1,
-    "explanation": "3,776メートルは富士山の標高です。日本で最も高い山として知られています。"
+    "answer": 0,
+    "explanation": "1975年はMicrosoftが設立された年です。ビル・ゲイツとポール・アレンがニューメキシコ州アルバカーキで創業しました。"
   },
   {
     "id": 2,
-    "number": "47",
+    "number": "262",
     "question": "この数字、なんの数字？",
     "choices": [
-      "日本のプロ野球チーム数",
-      "日本の世界遺産の数",
-      "日本の都道府県の数",
-      "日本の政令指定都市の数"
+      "Microsoft の保有特許数（万件）",
+      "LinkedIn 買収額（億ドル）",
+      "GitHub 買収額（億ドル）",
+      "Azure のサービス数"
     ],
-    "answer": 2,
-    "explanation": "47は日本の都道府県の数です。1都1道2府43県で構成されています。"
+    "answer": 1,
+    "explanation": "262億ドルはMicrosoftがLinkedInを買収した際の金額です。2016年に当時のMicrosoft史上最大の買収として話題になりました。"
   },
   {
     "id": 3,
-    "number": "634",
+    "number": "75",
     "question": "この数字、なんの数字？",
     "choices": [
-      "東京タワーの高さ（メートル）",
-      "日本一長い川の長さ（キロメートル）",
-      "東京スカイツリーの高さ（メートル）",
-      "日本で一番深い湖の深さ（メートル）"
+      "Microsoft 365 の搭載アプリ数",
+      "GitHub 買収額（億ドル）",
+      "Azure のリージョン数",
+      "Windows のメジャーバージョン総数"
+    ],
+    "answer": 1,
+    "explanation": "75億ドルはMicrosoftがGitHubを買収した際の金額です。2018年に発表され、世界最大の開発者コミュニティがMicrosoft傘下に入りました。"
+  },
+  {
+    "id": 4,
+    "number": "2001",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Windows XP が発売された年",
+      "初代 Xbox が発売された年",
+      "Microsoft Azure が開始された年",
+      "Internet Explorer が誕生した年"
+    ],
+    "answer": 1,
+    "explanation": "2001年は初代Xboxが北米で発売された年です。Microsoftのゲーム市場参入を象徴する製品として、PlayStationに対抗しました。"
+  },
+  {
+    "id": 5,
+    "number": "60",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Azure のリージョン数",
+      "Microsoft のオフィス所在国数",
+      "Windows のサポート言語数",
+      "Microsoft 365 の月額料金（ドル）"
+    ],
+    "answer": 0,
+    "explanation": "60以上はAzureが世界中に展開するリージョン（データセンター地域）の数です。他のクラウドプロバイダーを上回る地理的カバレッジを誇ります。"
+  },
+  {
+    "id": 6,
+    "number": "1985",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "MS-DOS が発表された年",
+      "Microsoft が株式公開した年",
+      "Windows 1.0 が発売された年",
+      "Microsoft Office が発表された年"
     ],
     "answer": 2,
-    "explanation": "634メートルは東京スカイツリーの高さです。「むさし（634）」の語呂合わせでも知られています。"
+    "explanation": "1985年はWindows 1.0が発売された年です。GUI（グラフィカルユーザーインターフェース）を搭載した初のWindowsとして登場しました。"
+  },
+  {
+    "id": 7,
+    "number": "100,000",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Azure のアクティブユーザー数",
+      "GitHub の総リポジトリ数（万）",
+      "Microsoft の従業員数（2024年時点の概数）",
+      "Bing の1日あたりの検索回数（万）"
+    ],
+    "answer": 2,
+    "explanation": "約100,000人はMicrosoftのグローバル従業員数（2024年時点の概数）です。世界各地にオフィスを構え、多様な製品・サービスを開発しています。"
+  },
+  {
+    "id": 8,
+    "number": "3",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Azure が提供する AI サービスの数",
+      "Windows 11 の主要エディション数",
+      "Microsoft の創業者の人数",
+      "Microsoft 365 に含まれる主要アプリの数"
+    ],
+    "answer": 1,
+    "explanation": "3はWindows 11の主要エディション数です。Home、Pro、Enterpriseの3つのエディションが主に提供されています。"
+  },
+  {
+    "id": 9,
+    "number": "197",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Minecraft の月間アクティブユーザー数（百万人）",
+      "Teams の月間アクティブユーザー数（百万人）",
+      "Outlook のメール送信数（億通/日）",
+      "Xbox Game Pass のゲーム数"
+    ],
+    "answer": 0,
+    "explanation": "約1億9,700万人はMinecraftの月間アクティブユーザー数です。2014年にMicrosoftが25億ドルで買収したMojangが開発する、世界で最も売れたゲームの一つです。"
+  },
+  {
+    "id": 10,
+    "number": "10",
+    "question": "この数字、なんの数字？",
+    "choices": [
+      "Microsoft が発表した Surface の世代数",
+      "Windows 10 のバージョン番号",
+      "Microsoft Edge のメジャーバージョン数",
+      "Azure DevOps のサービス数"
+    ],
+    "answer": 1,
+    "explanation": "10はWindows 10のバージョン番号です。2015年にリリースされ、「最後のWindows」として継続的にアップデートされる方針が示されましたが、後にWindows 11が発表されました。"
   }
 ]
