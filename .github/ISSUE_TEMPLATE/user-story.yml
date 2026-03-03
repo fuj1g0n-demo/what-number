@@ -1,0 +1,47 @@
+name: "\U0001F4D6 ユーザーストーリー"
+description: "ユーザー視点の要件記述"
+labels: ["user-story"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## ユーザーストーリー
+        ユーザー視点での要件を記述してください。
+
+  - type: textarea
+    id: user-story
+    attributes:
+      label: ユーザーストーリー
+      description: "「As a / I want / So that」形式で記述してください"
+      placeholder: |
+        As a [ユーザーの役割],
+        I want [実現したいこと],
+        So that [得られる価値・目的].
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance Criteria（EARS 形式）
+      description: |
+        EARS（Easy Approach to Requirements Syntax）形式で記述してください。
+        パターン例:
+        - Ubiquitous: <システム名> shall <要件>
+        - Event-driven: When <トリガー>, <システム名> shall <応答>
+        - State-driven: While <状態>, <システム名> shall <要件>
+        - Unwanted behavior: If <条件>, then <システム名> shall <応答>
+        - Optional: Where <特徴>, <システム名> shall <要件>
+      placeholder: |
+        1. When ユーザーがクイズページにアクセスする, システム shall クイズ問題を表示する
+        2. When ユーザーが回答を送信する, システム shall 正解・不正解を判定して結果を表示する
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 補足情報
+      description: "関連するドキュメント、スクリーンショット、参考情報などがあれば記載してください"
+    validations:
+      required: false

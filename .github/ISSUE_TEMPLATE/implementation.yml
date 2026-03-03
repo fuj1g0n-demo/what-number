@@ -1,0 +1,62 @@
+name: "\U0001F528 実装"
+description: "詳細設計・コーディング・自動テスト"
+labels: ["implementation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 実装 Issue
+        この issue はユーザーストーリーの sub-issue として作成してください。
+        詳細設計およびテスト計画はこの issue 内に記述します（リポジトリ内にファイルとして保持しません）。
+
+  - type: input
+    id: parent-issue
+    attributes:
+      label: 親ユーザーストーリー
+      description: "親となるユーザーストーリー issue の番号を入力してください"
+      placeholder: "#42"
+    validations:
+      required: true
+
+  - type: textarea
+    id: detailed-design
+    attributes:
+      label: 詳細設計
+      description: "実装の詳細設計を記述してください"
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: テスト計画
+      description: |
+        以下のテスト種別ごとに対象範囲・テスト観点を記述してください。
+        System Test のテストケースは Gherkin 形式で記述してください。
+      placeholder: |
+        ## Unit Test
+        - 対象: QuizService#evaluateAnswer
+        - 観点: 正解判定ロジックの正確性
+
+        ## Integration Test
+        - 対象: QuizController → QuizService → QuizRepository
+        - 観点: API エンドポイントからデータ取得・回答判定までの結合
+
+        ## System Test
+        ```gherkin
+        Feature: クイズ回答
+          Scenario: 正解を選択した場合
+            Given クイズページが表示されている
+            When ユーザーが正しい回答を選択する
+            Then 「正解です！」と表示される
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation-notes
+    attributes:
+      label: 実装上の留意点
+      description: "実装時に注意すべき点があれば記載してください"
+    validations:
+      required: false

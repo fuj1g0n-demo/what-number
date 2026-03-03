@@ -1,0 +1,64 @@
+name: "\U0001F9EA 手動テスト"
+description: "自動テストでカバーできないテスト"
+labels: ["manual-test"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 手動テスト Issue
+        この issue はユーザーストーリーの sub-issue として作成してください。
+        テストケースは Gherkin 形式で記述してください。
+
+  - type: input
+    id: parent-issue
+    attributes:
+      label: 親ユーザーストーリー
+      description: "親となるユーザーストーリー issue の番号を入力してください"
+      placeholder: "#42"
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-cases
+    attributes:
+      label: テストケース（Gherkin 形式）
+      description: "手動テストのテストケースを Gherkin 形式で記述してください"
+      placeholder: |
+        Feature: クイズ画面の表示確認
+
+          Background:
+            Given テスト環境にアクセスできる状態である
+
+          Scenario: 画面レイアウトの確認
+            Given クイズページにアクセスする
+            When ページが表示される
+            Then クイズ問題が画面中央に表示されている
+            And 選択肢が見やすく配置されている
+            And フォントサイズが適切である
+
+          Scenario: 異なるブラウザでの表示確認
+            Given Chrome ブラウザでクイズページにアクセスする
+            When ページが表示される
+            Then レイアウトが崩れていないことを確認する
+    validations:
+      required: true
+
+  - type: textarea
+    id: preconditions
+    attributes:
+      label: 前提条件
+      description: "テスト実施の前提条件を記載してください"
+    validations:
+      required: true
+
+  - type: textarea
+    id: test-environment
+    attributes:
+      label: テスト環境
+      description: "テスト実施に必要な環境・ツールを記載してください"
+      placeholder: |
+        - ブラウザ: Chrome 最新版, Firefox 最新版
+        - OS: Windows 11, macOS
+        - 画面解像度: 1920x1080
+    validations:
+      required: true
