@@ -1,5 +1,6 @@
 plugins {
     java
+    jacoco
     id("org.springframework.boot") version "3.4.3"
     id("io.spring.dependency-management") version "1.1.7"
 }
@@ -92,6 +93,57 @@ tasks.register<Test>("systemTest") {
 // ---------------------------------------------------------------------------
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// ---------------------------------------------------------------------------
+// JaCoCo カバレッジ設定
+// ---------------------------------------------------------------------------
+
+// Unit Test のカバレッジ
+tasks.test {
+    finalizedBy(tasks.jacocoTestReport)
+}
+
+tasks.jacocoTestReport {
+    dependsOn(tasks.test)
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+// Integration Test のカバレッジ
+tasks.named<Test>("integrationTest") {
+    finalizedBy("jacocoIntegrationTestReport")
+}
+
+tasks.register<JacocoReport>("jacocoIntegrationTestReport") {
+    dependsOn("integrationTest")
+    sourceSets(sourceSets.main.get())
+    executionData(layout.buildDirectory.file("jacoco/integrationTest.exec"))
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
+}
+
+// 全テスト統合カバレッジレポート
+tasks.register<JacocoReport>("jacocoFullReport") {
+    description = "Generates a combined code coverage report for unit + integration tests."
+    group = "verification"
+    dependsOn(tasks.test, tasks.named("integrationTest"))
+    sourceSets(sourceSets.main.get())
+    executionData(
+        layout.buildDirectory.file("jacoco/test.exec"),
+        layout.buildDirectory.file("jacoco/integrationTest.exec")
+    )
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+        csv.required.set(false)
+    }
 }
 
 tasks.named("check") {
