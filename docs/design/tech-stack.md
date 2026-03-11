@@ -77,6 +77,7 @@
 | ビルドスクリプト DSL | Kotlin DSL（build.gradle.kts） | 型安全、IDE 補完が効く、Groovy DSL より保守性が高い |
 | Gradle Wrapper | 使用する | チーム全員が同一バージョンの Gradle を使用することを保証 |
 | 依存管理 | Spring Boot BOM（Bill of Materials） | Spring 関連ライブラリのバージョン整合性を自動管理 |
+| プロジェクト構成 | Gradle マルチプロジェクト（モノレポ） | `app`（メインアプリ + Unit/Integration Test）と `system-test`（Playwright E2E）の 2 サブプロジェクト |
 
 ---
 
@@ -88,9 +89,9 @@
 
 | テスト種別 | 技術スタック | 実行方式 | 対象 |
 |---|---|---|---|
-| Unit Test | JUnit 5 + Mockito + AssertJ | Gradle `test` タスク | 個々のクラス・メソッド |
-| Integration Test | JUnit 5 + Spring Boot Test（@SpringBootTest） | Gradle `integrationTest` タスク | Controller-Service-Repository 間の結合 |
-| System Test | Playwright（Java） + JUnit 5 | Gradle `systemTest` タスク | ブラウザ経由のエンドツーエンド |
+| Unit Test | JUnit 5 + Mockito + AssertJ | Gradle `:app:test` タスク | 個々のクラス・メソッド |
+| Integration Test | JUnit 5 + Spring Boot Test（@SpringBootTest） | Gradle `:app:integrationTest` タスク | Controller-Service-Repository 間の結合 |
+| System Test | Playwright（Java） + JUnit 5 | Gradle `:system-test:test` タスク（独立サブプロジェクト） | ブラウザ経由のエンドツーエンド |
 
 ### 各テストレベルの詳細
 
@@ -113,6 +114,8 @@
 - **JUnit 5 統合**: Playwright を JUnit 5 のテストライフサイクルで管理
 - テスト対象のアプリケーションを起動した状態で、実ブラウザ経由の E2E テストを実行
 - Gherkin 形式のテストケース設計に基づき、Playwright でテストシナリオを実装
+- **独立サブプロジェクト**: メインアプリケーション（Spring Boot）の依存を含まず、Playwright + JUnit 5 のみで構成される
+- 接続先 URL はシステムプロパティ `test.base-url` で外部から指定可能（デフォルト: `http://localhost:8080`）
 
 ### Playwright を選定する根拠（Selenium との比較）
 
@@ -127,27 +130,41 @@
 
 ### ディレクトリ構成方針
 
+Gradle マルチプロジェクト構成（モノレポ）を採用し、メインアプリケーションと System Test を独立したサブプロジェクトとして管理する。
+
 ```
 プロジェクトルート/
-├── src/
-│   ├── main/
-│   │   ├── java/          ... アプリケーションコード
-│   │   └── resources/
-│   │       ├── templates/ ... Thymeleaf テンプレート
-│   │       ├── static/    ... 静的リソース（CSS, JS, 画像）
-│   │       ├── data/      ... クイズデータ JSON
-│   │       └── application.yml
-│   ├── test/              ... Unit Test
-│   ├── integrationTest/   ... Integration Test
-│   └── systemTest/        ... System Test（Playwright）
+├── app/                       ... メインアプリケーション サブプロジェクト
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/
+│       │   ├── java/          ... アプリケーションコード
+│       │   └── resources/
+│       │       ├── templates/ ... Thymeleaf テンプレート
+│       │       ├── static/    ... 静的リソース（CSS, JS, 画像）
+│       │       ├── data/      ... クイズデータ JSON
+│       │       └── application.yml
+│       ├── test/              ... Unit Test
+│       └── integrationTest/   ... Integration Test
+├── system-test/               ... System Test サブプロジェクト（独立）
+│   ├── build.gradle.kts
+│   └── src/
+│       └── test/              ... System Test（Playwright + JUnit 5）
 ├── docs/
-│   ├── specs/             ... 要件定義
-│   └── design/            ... 基本設計・アーキテクチャ
-├── build.gradle.kts
-├── settings.gradle.kts
+│   ├── specs/                 ... 要件定義
+│   └── design/                ... 基本設計・アーキテクチャ
+├── build.gradle.kts           ... ルートプロジェクト（共通設定）
+├── settings.gradle.kts        ... サブプロジェクト include 定義
 └── gradle/
     └── wrapper/
 ```
+
+### マルチプロジェクト構成を採用する根拠
+
+- System Test はメインアプリケーションのクラスに依存せず、HTTP 経由で起動済みアプリケーションに接続するため、ビルド依存関係を持つ必要がない
+- 実際のシステム開発において System Test はデプロイ済み環境に対して実行するものであり、アプリケーションのビルドとは独立して管理すべきである
+- CI パイプラインで「アプリビルド → アプリ起動 → System Test 実行」を段階的に制御できる
+- 別リポジトリへの分離ではなく同一リポジトリ内のサブプロジェクトとすることで、バージョン管理・PR レビューを一体で行える
 
 ### パッケージ構成方針
 
@@ -169,6 +186,8 @@
 - PR 作成・更新時にすべての自動テスト（Unit / Integration / System）を実行
 - main ブランチへのマージ後にもテストを実行し、デプロイ可能状態を検証
 - Gradle Wrapper を使用し、CI 環境でのビルド再現性を確保
+- メインアプリケーションのビルド・テスト（`:app:build`）と System Test（`:system-test:test`）は独立したステップとして実行する
+- System Test 実行前にアプリケーションの起動が完了していることを前提とする
 
 ---
 
