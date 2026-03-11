@@ -27,20 +27,20 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Build
-        run: gradle build
+        run: gradle :app:build
 
       - name: Unit Test
-        run: gradle test
+        run: gradle :app:test
 
       - name: Integration Test
-        run: gradle integrationTest
+        run: gradle :app:integrationTest
 
       - name: Install Playwright browsers
-        run: gradle :systemTestClasses && npx playwright install --with-deps chromium
+        run: gradle :system-test:testClasses && npx playwright install --with-deps chromium
 
       - name: System Test
         run: |
-          gradle bootRun &
+          gradle :app:bootRun &
           sleep 10
-          gradle systemTest
+          gradle :system-test:test
           kill %1 || true
