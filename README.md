@@ -52,7 +52,7 @@ Gradle マルチプロジェクト構成（モノレポ）を採用していま�
 │   └── src/
 │       ├── main/
 │       │   ├── java/com/example/quiz/
-│       │   │   ├── controller/   ... Controller 層
+│       │   │   ├── controller/    ... Controller 層
 │       │   │   ├── service/       ... Service 層
 │       │   │   ├── model/         ... データモデル（Record）
 │       │   │   └── dataloader/    ... データロード
