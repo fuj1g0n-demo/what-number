@@ -62,10 +62,10 @@ Gradle マルチプロジェクト構成（モノレポ）を採用していま�
 │       │       └── data/          ... クイズデータ JSON
 │       ├── test/                  ... Unit Test
 │       └── integrationTest/       ... Integration Test
-├── system-test/               ... System Test（独立サブプロジェクト）
+├── system-test/                   ... System Test（独立サブプロジェクト）
 │   ├── build.gradle.kts
-│   └── src/test/              ... Playwright + JUnit 5
-├── docs/                      ... ドキュメント
-├── build.gradle.kts           ... ルートプロジェクト
-└── settings.gradle.kts        ... サブプロジェクト定義
+│   └── src/test/                  ... Playwright + JUnit 5
+├── docs/                          ... ドキュメント
+├── build.gradle.kts               ... ルートプロジェクト
+└── settings.gradle.kts            ... サブプロジェクト定義
 ```
