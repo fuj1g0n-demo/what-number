@@ -17,11 +17,11 @@
 ## ビルド・実行
 
 ```bash
-# ビルド
-./gradlew build
+# ビルド（Unit Test + Integration Test を含む）
+./gradlew :app:build
 
 # アプリケーション起動
-./gradlew bootRun
+./gradlew :app:bootRun
 ```
 
 ブラウザで http://localhost:8080 にアクセスしてください。
@@ -30,30 +30,42 @@
 
 ```bash
 # Unit Test
-./gradlew test
+./gradlew :app:test
 
 # Integration Test
-./gradlew integrationTest
+./gradlew :app:integrationTest
 
 # System Test（事前にアプリケーション起動が必要）
-./gradlew systemTest
+./gradlew :system-test:test
+
+# カバレッジレポート（Unit + Integration）
+./gradlew :app:jacocoFullReport
 ```
 
 ## プロジェクト構成
 
+Gradle マルチプロジェクト構成（モノレポ）を採用しています。
+
 ```
-src/
-├── main/
-│   ├── java/com/example/quiz/
-│   │   ├── controller/   ... Controller 層
-│   │   ├── service/       ... Service 層
-│   │   ├── model/         ... データモデル（Record）
-│   │   └── dataloader/    ... データロード
-│   └── resources/
-│       ├── templates/     ... Thymeleaf テンプレート
-│       ├── static/css/    ... スタイルシート
-│       └── data/          ... クイズデータ JSON
-├── test/                  ... Unit Test
-├── integrationTest/       ... Integration Test
-└── systemTest/            ... System Test（Playwright）
+├── app/                       ... メインアプリケーション
+│   ├── build.gradle.kts
+│   └── src/
+│       ├── main/
+│       │   ├── java/com/example/quiz/
+│       │   │   ├── controller/   ... Controller 層
+│       │   │   ├── service/       ... Service 層
+│       │   │   ├── model/         ... データモデル（Record）
+│       │   │   └── dataloader/    ... データロード
+│       │   └── resources/
+│       │       ├── templates/     ... Thymeleaf テンプレート
+│       │       ├── static/css/    ... スタイルシート
+│       │       └── data/          ... クイズデータ JSON
+│       ├── test/                  ... Unit Test
+│       └── integrationTest/       ... Integration Test
+├── system-test/               ... System Test（独立サブプロジェクト）
+│   ├── build.gradle.kts
+│   └── src/test/              ... Playwright + JUnit 5
+├── docs/                      ... ドキュメント
+├── build.gradle.kts           ... ルートプロジェクト
+└── settings.gradle.kts        ... サブプロジェクト定義
 ```
