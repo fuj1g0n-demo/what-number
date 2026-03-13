@@ -10,7 +10,7 @@ body {
 }
 
 .navbar-gradient {
-    background: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%);
+    background: linear-gradient(90deg, #4e54c8 0%, #6064b8 100%);
 }
 
 .display-3 {
@@ -25,7 +25,7 @@ body {
 }
 
 .card-header {
-    background: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%);
+    background: linear-gradient(90deg, #4e54c8 0%, #6064b8 100%);
     color: #fff;
     border-radius: 1rem 1rem 0 0 !important;
 }
@@ -35,18 +35,18 @@ body {
 }
 
 .badge.bg-primary {
-    background: linear-gradient(90deg, #4e54c8, #8f94fb) !important;
+    background: linear-gradient(90deg, #4e54c8, #6064b8) !important;
 }
 
 .btn-primary {
     background-color: #4e54c8;
-    background-image: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%);
+    background-image: linear-gradient(90deg, #4e54c8 0%, #6064b8 100%);
     border: none;
 }
 
 .btn-primary:hover {
     background-color: #3d42a8;
-    background-image: linear-gradient(90deg, #3d42a8 0%, #7a7fe6 100%);
+    background-image: linear-gradient(90deg, #3d42a8 0%, #5558b0 100%);
 }
 
 .btn-primary:active,
@@ -67,7 +67,7 @@ body {
 }
 
 .btn-outline-primary:hover {
-    background: linear-gradient(90deg, #4e54c8 0%, #8f94fb 100%);
+    background: linear-gradient(90deg, #4e54c8 0%, #6064b8 100%);
     border-color: #4e54c8;
     color: #fff;
 }
