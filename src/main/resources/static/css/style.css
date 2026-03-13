@@ -78,6 +78,10 @@ body {
 
 /* モバイル: < 768px */
 @media (max-width: 767.98px) {
+    body {
+        background-attachment: scroll;
+    }
+
     .container {
         padding-left: 0.75rem;
         padding-right: 0.75rem;
