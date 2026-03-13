@@ -121,14 +121,17 @@ class GradientAndResponsiveSystemTest {
     }
 
     private void assertNoHorizontalScroll(int width, int height) {
+        String[] paths = {"/", "/quiz/1"};
         try (BrowserContext context = browser.newContext(
                 new Browser.NewContextOptions().setViewportSize(width, height))) {
             Page page = context.newPage();
-            page.navigate(BASE_URL);
-            boolean hasHorizontalScroll = (boolean) page.evaluate(
-                    "() => document.documentElement.scrollWidth > document.documentElement.clientWidth");
-            assertFalse(hasHorizontalScroll,
-                    "画面幅 " + width + "px で水平スクロールが発生しないこと");
+            for (String path : paths) {
+                page.navigate(BASE_URL + path);
+                boolean hasHorizontalScroll = (boolean) page.evaluate(
+                        "() => document.documentElement.scrollWidth > document.documentElement.clientWidth");
+                assertFalse(hasHorizontalScroll,
+                        "画面幅 " + width + "px, パス " + path + " で水平スクロールが発生しないこと");
+            }
         }
     }
 }
