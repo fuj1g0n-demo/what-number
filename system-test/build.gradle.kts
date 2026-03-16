@@ -22,4 +22,6 @@ tasks.test {
     useJUnitPlatform()
     systemProperty("test.base-url",
         System.getProperty("test.base-url", "http://localhost:8080"))
+    environment("PLAYWRIGHT_BROWSERS_TO_INSTALL", "chromium")
+    environment("PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS", "true")
 }
