@@ -1,10 +1,17 @@
 ---
-applyTo: "**"
+name: screenshot
+description: 'Playwright CLI を使用して Web ページのスクリーンショットを撮影する。Use when asked to "スクリーンショットを撮って", "画面キャプチャ", "screenshot", "capture page", or when verifying UI appearance of a running web application.'
 ---
 
 # スクリーンショット撮影スキル
 
 Playwright CLI を使用して、指定された URL のスクリーンショットを撮影する。
+
+## When to Use This Skill
+
+- ユーザーがスクリーンショットや画面キャプチャを依頼した場合
+- UI の見た目を確認・検証する場合
+- 動作中の Web アプリケーションの画面を記録する場合
 
 ## 前提条件
 
@@ -68,7 +75,9 @@ npx playwright screenshot --full-page --device "iPhone 15" http://localhost:8080
 npx playwright screenshot --full-page --wait-for-selector ".quiz-list" http://localhost:8080 build/screenshots/screenshot-quiz.png
 ```
 
-## エラー時の対応
+## トラブルシューティング
 
-- コマンドが接続エラーを返した場合、「アプリケーションが起動していない可能性があります。`./gradlew :app:bootRun` でアプリケーションを起動してください。」とユーザーに伝える
-- Playwright がインストールされていない場合、`npx playwright install chromium` の実行を提案する
+| 問題 | 対処 |
+|---|---|
+| 接続エラー | アプリケーションが起動していない可能性。`./gradlew :app:bootRun` で起動する |
+| Playwright 未インストール | `npx playwright install chromium` を実行する |
