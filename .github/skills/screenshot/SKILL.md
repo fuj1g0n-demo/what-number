@@ -7,7 +7,7 @@ description: 'Playwright CLI を使用して Web ページのスクリーンシ�
 
 Playwright CLI を使用して、指定された URL のスクリーンショットを撮影する。
 
-## When to Use This Skill
+## この Skill を使うべき時
 
 - ユーザーがスクリーンショットや画面キャプチャを依頼した場合
 - UI の見た目を確認・検証する場合
