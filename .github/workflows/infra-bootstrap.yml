@@ -1,7 +1,7 @@
 name: Infra Bootstrap (Azure Container Apps)
 
-# 共有インフラ（新規リソースグループ / ACR / マネージド ID / ACA 環境）を一度だけ作成する。
-# 管理者が手動で 1 回実行する。べき等なので再実行しても安全。
+# 共有インフラ（新規リソースグループ / ACR / マネージド ID / ACA 環境 / App Service プラン）を
+# 一度だけ作成する。管理者が手動で 1 回実行する。べき等なので再実行しても安全。
 
 on:
   workflow_dispatch:
@@ -20,6 +20,11 @@ env:
   ACR_NAME: ${{ vars.ACR_NAME }}
   ACA_ENVIRONMENT: ${{ vars.ACA_ENVIRONMENT }}
   ACR_PULL_IDENTITY_NAME: ${{ vars.ACR_PULL_IDENTITY_NAME }}
+  APP_SERVICE_PLAN: ${{ vars.APP_SERVICE_PLAN }}
+  # App Service は VM クォータが必要なため、クォータのあるリージョンを個別指定可能（未設定なら AZURE_LOCATION）
+  APP_SERVICE_LOCATION: ${{ vars.APP_SERVICE_LOCATION || vars.AZURE_LOCATION }}
+  # 既定は B1。VM クォータがないサブスクリプションでは F1（Free）を指定する
+  APP_SERVICE_PLAN_SKU: ${{ vars.APP_SERVICE_PLAN_SKU || 'B1' }}
 
 jobs:
   bootstrap:
@@ -108,6 +113,21 @@ jobs:
             echo "Container Apps environment '$ACA_ENVIRONMENT' created."
           fi
 
+      - name: Create App Service plan (Linux)
+        run: |
+          if az appservice plan show -g "$RESOURCE_GROUP" -n "$APP_SERVICE_PLAN" >/dev/null 2>&1; then
+            echo "App Service plan '$APP_SERVICE_PLAN' already exists, skipping creation."
+          else
+            az appservice plan create \
+              --name "$APP_SERVICE_PLAN" \
+              --resource-group "$RESOURCE_GROUP" \
+              --location "$APP_SERVICE_LOCATION" \
+              --is-linux \
+              --sku "$APP_SERVICE_PLAN_SKU" \
+              --output none
+            echo "App Service plan '$APP_SERVICE_PLAN' created."
+          fi
+
       - name: Summary
         run: |
           {
@@ -120,4 +140,5 @@ jobs:
             echo "| Container Registry | \`$ACR_NAME\` |"
             echo "| ACA Environment | \`$ACA_ENVIRONMENT\` |"
             echo "| ACR Pull Identity | \`$ACR_PULL_IDENTITY_NAME\` |"
+            echo "| App Service Plan | \`$APP_SERVICE_PLAN\` |"
           } >> "$GITHUB_STEP_SUMMARY"
