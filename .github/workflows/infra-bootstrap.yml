@@ -1,0 +1,123 @@
+name: Infra Bootstrap (Azure Container Apps)
+
+# 共有インフラ（新規リソースグループ / ACR / マネージド ID / ACA 環境）を一度だけ作成する。
+# 管理者が手動で 1 回実行する。べき等なので再実行しても安全。
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: infra-bootstrap
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  LOCATION: ${{ vars.AZURE_LOCATION }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_ENVIRONMENT: ${{ vars.ACA_ENVIRONMENT }}
+  ACR_PULL_IDENTITY_NAME: ${{ vars.ACR_PULL_IDENTITY_NAME }}
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Register resource providers
+        run: |
+          for NS in Microsoft.App Microsoft.OperationalInsights Microsoft.ContainerRegistry Microsoft.ManagedIdentity; do
+            echo "Registering provider: $NS"
+            az provider register --namespace "$NS" --wait
+          done
+          az extension add --name containerapp --upgrade --only-show-errors
+
+      - name: Create resource group
+        run: |
+          az group create \
+            --name "$RESOURCE_GROUP" \
+            --location "$LOCATION" \
+            --tags Project=quiz-app Purpose=preview \
+            --output none
+          echo "Resource group '$RESOURCE_GROUP' is ready."
+
+      - name: Create Azure Container Registry
+        run: |
+          if az acr show --name "$ACR_NAME" >/dev/null 2>&1; then
+            echo "ACR '$ACR_NAME' already exists, skipping creation."
+          else
+            az acr create \
+              --name "$ACR_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --sku Basic \
+              --admin-enabled false \
+              --output none
+            echo "ACR '$ACR_NAME' created."
+          fi
+
+      - name: Create user-assigned managed identity for ACR pull
+        run: |
+          if az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" >/dev/null 2>&1; then
+            echo "Managed identity '$ACR_PULL_IDENTITY_NAME' already exists, skipping creation."
+          else
+            az identity create \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$ACR_PULL_IDENTITY_NAME" \
+              --output none
+            echo "Managed identity '$ACR_PULL_IDENTITY_NAME' created."
+          fi
+
+      - name: Grant AcrPull to managed identity
+        run: |
+          ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv)
+          PRINCIPAL_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query principalId -o tsv)
+
+          # AAD 反映待ちのリトライ付きでロール割り当て（べき等）
+          for i in $(seq 1 6); do
+            if az role assignment create \
+                 --assignee-object-id "$PRINCIPAL_ID" \
+                 --assignee-principal-type ServicePrincipal \
+                 --role AcrPull \
+                 --scope "$ACR_ID" \
+                 --output none 2>/dev/null; then
+              echo "AcrPull role assigned."
+              break
+            fi
+            echo "Role assignment not ready yet (attempt $i), retrying in 10s..."
+            sleep 10
+          done
+
+      - name: Create Container Apps environment
+        run: |
+          if az containerapp env show -n "$ACA_ENVIRONMENT" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
+            echo "Container Apps environment '$ACA_ENVIRONMENT' already exists, skipping creation."
+          else
+            az containerapp env create \
+              --name "$ACA_ENVIRONMENT" \
+              --resource-group "$RESOURCE_GROUP" \
+              --location "$LOCATION" \
+              --output none
+            echo "Container Apps environment '$ACA_ENVIRONMENT' created."
+          fi
+
+      - name: Summary
+        run: |
+          {
+            echo "## Infra Bootstrap Complete"
+            echo ""
+            echo "| Resource | Name |"
+            echo "|---|---|"
+            echo "| Resource Group | \`$RESOURCE_GROUP\` |"
+            echo "| Location | \`$LOCATION\` |"
+            echo "| Container Registry | \`$ACR_NAME\` |"
+            echo "| ACA Environment | \`$ACA_ENVIRONMENT\` |"
+            echo "| ACR Pull Identity | \`$ACR_PULL_IDENTITY_NAME\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
