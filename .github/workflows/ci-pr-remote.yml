@@ -264,19 +264,18 @@ jobs:
             echo "Reusing existing preview web app: $WEBAPP_NAME"
           else
             echo "Creating preview web app: $WEBAPP_NAME"
-            # az CLI のバージョンにより Java SE ランタイムの区切り文字が ':' か '|' で
-            # 異なる（新: JAVA:21-java21 / 旧: JAVA|21-java21）ため両形式を試す
+            # ランナーの az CLI が対応する Java 21 Linux ランタイム文字列を動的解決する
+            # （az CLI のバージョンにより ':' / '|' 区切りや表記が異なるため）
+            echo "Available Java Linux runtimes on runner:"
+            az webapp list-runtimes --os-type linux -o tsv 2>/dev/null | grep -iE 'JAVA' || true
+            RT=$(az webapp list-runtimes --os-type linux -o tsv 2>/dev/null | tr -d ' ' | grep -iE 'JAVA[:|]21($|-)' | head -1)
+            [ -z "$RT" ] && RT="JAVA:21-java21"
+            echo "Resolved runtime: $RT"
             az webapp create \
               --name "$WEBAPP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --plan "$APP_SERVICE_PLAN" \
-              --runtime "JAVA:21-java21" \
-              --output none \
-            || az webapp create \
-              --name "$WEBAPP_NAME" \
-              --resource-group "$RESOURCE_GROUP" \
-              --plan "$APP_SERVICE_PLAN" \
-              --runtime "JAVA|21-java21" \
+              --runtime "$RT" \
               --output none
           fi
 
