@@ -1,0 +1,247 @@
+name: CI (PR) - Remote Preview Deploy & E2E
+
+# トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン / クローズ）
+# デプロイ先: PR 専用の Azure Container App プレビュー環境（PR ごとに固有の URL）
+# 内容     : イメージ build -> PR 専用 ACA へ deploy -> 固有 URL に対し E2E 実行 ->
+#            URL を PR にコメント。PR クローズ時はプレビュー環境を削除。
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, closed]
+
+concurrency:
+  group: ci-pr-remote-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  ACA_ENVIRONMENT: ${{ vars.ACA_ENVIRONMENT }}
+  ACR_PULL_IDENTITY_NAME: ${{ vars.ACR_PULL_IDENTITY_NAME }}
+  IMAGE_REPO: quiz-app
+
+jobs:
+  deploy-preview:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+
+    env:
+      APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}-pr-${{ github.event.pull_request.number }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push preview image (ACR Build)
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}" \
+            --file Dockerfile \
+            .
+
+      - name: Deploy preview container app
+        id: deploy
+        run: |
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
+          UAMI_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query id -o tsv)
+          # 最後の push から 1 時間後を TTL とする（TTL Cleanup ワークフローが削除）
+          TTL_EXPIRE=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
+
+          if az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
+            echo "Updating existing preview app: $APP_NAME"
+            az containerapp update \
+              --name "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --image "$IMAGE" \
+              --output none
+          else
+            echo "Creating preview app: $APP_NAME"
+            az containerapp create \
+              --name "$APP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --environment "$ACA_ENVIRONMENT" \
+              --image "$IMAGE" \
+              --target-port 8080 \
+              --ingress external \
+              --registry-server "${ACR_NAME}.azurecr.io" \
+              --registry-identity "$UAMI_ID" \
+              --user-assigned "$UAMI_ID" \
+              --min-replicas 1 \
+              --max-replicas 1 \
+              --cpu 0.5 --memory 1.0Gi \
+              --output none
+          fi
+
+          # TTL タグを毎回更新（push のたびにリセット）
+          APP_ID=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
+          az tag update \
+            --resource-id "$APP_ID" \
+            --operation Merge \
+            --tags Environment=preview PullRequest="$PR_NUM" TTLExpire="$TTL_EXPIRE" \
+            --output none
+
+          FQDN=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for preview to be ready
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Waiting for $URL to return HTTP 200..."
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "Preview is ready (HTTP $CODE)."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $CODE, retrying in 10s..."
+            sleep 10
+          done
+          echo "Preview did not become ready in time."
+          exit 1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Playwright browsers
+        run: ./gradlew :system-test:testClasses && npx playwright install --with-deps chromium
+
+      - name: Run E2E (System Test) against preview
+        id: e2e
+        continue-on-error: true
+        run: ./gradlew :system-test:test -Dtest.base-url="${{ steps.deploy.outputs.url }}"
+
+      - name: Upload E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-pr-${{ env.PR_NUM }}
+          path: system-test/build/screenshots/
+          if-no-files-found: ignore
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-pr-${{ env.PR_NUM }}
+          path: system-test/build/reports/tests/test/
+          if-no-files-found: ignore
+
+      - name: Comment PR with preview URL and E2E result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        with:
+          script: |
+            const prNum = context.payload.pull_request.number;
+            const url = process.env.PREVIEW_URL;
+            const e2e = process.env.E2E_OUTCOME;
+            const e2eLine = e2e === 'success'
+              ? '**E2E (System Test):** ✅ Passed'
+              : '**E2E (System Test):** ❌ Failed — Actions のログとアーティファクトを確認してください';
+            const body = [
+              '## 🔍 Preview Environment (Azure Container Apps)',
+              '',
+              `**URL:** ${url}`,
+              '',
+              e2eLine,
+              '',
+              '> このプレビュー環境は最後の push から 1 時間後、または PR クローズ時に自動削除されます。',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNum,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes('Preview Environment'));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNum,
+                body,
+              });
+            }
+
+      - name: Show preview summary
+        if: always()
+        run: |
+          {
+            echo "## Preview Deployed"
+            echo ""
+            echo "**URL:** ${{ steps.deploy.outputs.url }}"
+            echo ""
+            echo "**E2E result:** ${{ steps.e2e.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail job if E2E failed
+        if: steps.e2e.outcome == 'failure'
+        run: |
+          echo "E2E tests failed against the preview environment."
+          exit 1
+
+  cleanup-preview:
+    if: github.event.action == 'closed'
+    runs-on: ubuntu-latest
+
+    env:
+      APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}-pr-${{ github.event.pull_request.number }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete preview container app
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          echo "Deleting preview container app: $APP_NAME"
+          az containerapp delete \
+            --name "$APP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --yes || true
+
+          {
+            echo "## Preview Environment Cleaned Up"
+            echo ""
+            echo "Deleted container app **${APP_NAME}** for PR #${PR_NUM}."
+          } >> "$GITHUB_STEP_SUMMARY"

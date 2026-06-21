@@ -1,0 +1,15 @@
+# ビルド成果物・キャッシュ
+**/build/
+**/.gradle/
+.gradle/
+
+# VCS / IDE / ドキュメント
+.git/
+.github/
+.idea/
+.vscode/
+docs/
+*.md
+
+# OS
+.DS_Store
