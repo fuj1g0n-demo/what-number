@@ -264,18 +264,37 @@ jobs:
             echo "Reusing existing preview web app: $WEBAPP_NAME"
           else
             echo "Creating preview web app: $WEBAPP_NAME"
-            # ランナーの az CLI が対応する Java 21 Linux ランタイム文字列を動的解決する
-            # （az CLI のバージョンにより ':' / '|' 区切りや表記が異なるため）
-            echo "Available Java Linux runtimes on runner:"
-            az webapp list-runtimes --os-type linux -o tsv 2>/dev/null | grep -iE 'JAVA' || true
-            RT=$(az webapp list-runtimes --os-type linux -o tsv 2>/dev/null | tr -d ' ' | grep -iE 'JAVA[:|]21($|-)' | head -1)
-            [ -z "$RT" ] && RT="JAVA:21-java21"
-            echo "Resolved runtime: $RT"
-            az webapp create \
+            # GitHub ホストランナーの az CLI はランタイムカタログが古く
+            # （JAVA|11-java11 までしか持たない）、create 時に Java 21 を直接指定すると
+            # 「not supported」で弾かれる。そこでまず Java 21 を試し、失敗した場合は
+            # カタログに存在する Java 11 で作成してから linux-fx-version で Java 21 を
+            # 強制する（linux-fx-version は生のパススルーでカタログ検証されず、
+            # App Service プラットフォーム側は Java 21 を提供するため動作する）。
+            if ! az webapp create \
+                  --name "$WEBAPP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --plan "$APP_SERVICE_PLAN" \
+                  --runtime "JAVA:21-java21" \
+                  --output none 2>/dev/null; then
+              echo "Java 21 の直接指定に失敗。Java 11 で作成し linux-fx-version で上書きします。"
+              az webapp create \
+                --name "$WEBAPP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --plan "$APP_SERVICE_PLAN" \
+                --runtime "JAVA:11-java11" \
+                --output none \
+              || az webapp create \
+                --name "$WEBAPP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --plan "$APP_SERVICE_PLAN" \
+                --runtime "JAVA|11-java11" \
+                --output none
+            fi
+            # 実行ランタイムを Java 21 に強制する
+            az webapp config set \
               --name "$WEBAPP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
-              --plan "$APP_SERVICE_PLAN" \
-              --runtime "$RT" \
+              --linux-fx-version "JAVA|21-java21" \
               --output none
           fi
 
