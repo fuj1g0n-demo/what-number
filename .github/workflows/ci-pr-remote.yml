@@ -32,7 +32,7 @@ env:
   IMAGE_REPO: quiz-app
 
 jobs:
-  deploy-preview:
+  deploy-preview-aca:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
 
@@ -264,11 +264,19 @@ jobs:
             echo "Reusing existing preview web app: $WEBAPP_NAME"
           else
             echo "Creating preview web app: $WEBAPP_NAME"
+            # az CLI のバージョンにより Java SE ランタイムの区切り文字が ':' か '|' で
+            # 異なる（新: JAVA:21-java21 / 旧: JAVA|21-java21）ため両形式を試す
             az webapp create \
               --name "$WEBAPP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --plan "$APP_SERVICE_PLAN" \
               --runtime "JAVA:21-java21" \
+              --output none \
+            || az webapp create \
+              --name "$WEBAPP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --plan "$APP_SERVICE_PLAN" \
+              --runtime "JAVA|21-java21" \
               --output none
           fi
 
