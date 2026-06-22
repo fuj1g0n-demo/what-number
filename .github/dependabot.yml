@@ -1,0 +1,38 @@
+# Dependabot 設定
+# 目的:
+#   - セキュリティ更新（脆弱性修正）の PR を、対象ライブラリごとに個別作成するのではなく
+#     1 つの PR にまとめて作成する（グループ化）。
+#   - 定期的なバージョン更新は行わず、セキュリティ更新のみに限定する。
+#     （open-pull-requests-limit: 0 はバージョン更新 PR を抑止する設定で、
+#       セキュリティ更新 PR には影響しない）
+#
+# 前提: リポジトリ設定で Dependency graph / Dependabot alerts /
+#       Dependabot security updates が有効であること（いずれも有効化済み）。
+version: 2
+updates:
+  # Gradle（Java 依存ライブラリ）。依存定義は各サブプロジェクトに存在する。
+  - package-ecosystem: "gradle"
+    directories:
+      - "/app"
+      - "/system-test"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      # セキュリティ更新をすべて 1 つの PR にまとめる
+      gradle-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+
+  # GitHub Actions（ワークフローで参照するアクション）
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 0
+    groups:
+      github-actions-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
