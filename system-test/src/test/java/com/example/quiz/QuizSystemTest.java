@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,6 +32,7 @@ class QuizSystemTest {
 
     private static final String BASE_URL = System.getProperty("test.base-url", "http://localhost:8080");
     private static final Path SCREENSHOT_DIR = Paths.get("build", "screenshots");
+    private static final String PAGE_HEADING_SELECTOR = "h1";
     private static final String QUIZ_LIST_ITEM_SELECTOR = "a.list-group-item";
     private static final String CHOICE_BUTTON_SELECTOR = "form button[type='submit']";
     private static final String QUIZ_NUMBER_DISPLAY_SELECTOR = "h2.display-3";
@@ -41,11 +44,8 @@ class QuizSystemTest {
             new QuizListItemExpectation(2, "47", "/quiz/2"),
             new QuizListItemExpectation(3, "634", "/quiz/3")
     );
-    private static final Map<Integer, QuizListItemExpectation> EXPECTED_QUIZZES_BY_ID = Map.of(
-            1, EXPECTED_QUIZZES.get(0),
-            2, EXPECTED_QUIZZES.get(1),
-            3, EXPECTED_QUIZZES.get(2)
-    );
+    private static final Map<Integer, QuizListItemExpectation> EXPECTED_QUIZZES_BY_ID = EXPECTED_QUIZZES.stream()
+            .collect(Collectors.toUnmodifiableMap(QuizListItemExpectation::id, Function.identity()));
     private static final List<String> EXPECTED_CHOICES = List.of(
             "東京スカイツリーの高さ（メートル）",
             "富士山の標高（メートル）",
@@ -103,7 +103,7 @@ class QuizSystemTest {
 
         assertTrue(page.title().contains("この数字、なんの数字？"),
                 "トップページのタイトルに「この数字、なんの数字？」が含まれること");
-        assertTrue(page.locator("h1").textContent().contains("クイズ一覧"),
+        assertTrue(page.locator(PAGE_HEADING_SELECTOR).textContent().contains("クイズ一覧"),
                 "一覧画面にクイズ一覧見出しが表示されること");
         assertEquals(EXPECTED_QUIZZES.size(), quizLinks.count(),
                 "クイズ一覧に3件のクイズが表示されること");
