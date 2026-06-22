@@ -28,6 +28,10 @@ class QuizSystemTest {
 
     private static final String BASE_URL = System.getProperty("test.base-url", "http://localhost:8080");
     private static final Path SCREENSHOT_DIR = Paths.get("build", "screenshots");
+    private static final String QUIZ_LIST_ITEM_SELECTOR = "a.list-group-item";
+    private static final String CHOICE_BUTTON_SELECTOR = "form button[type='submit']";
+    private static final int EXPECTED_QUIZ_COUNT = 3;
+    private static final int EXPECTED_CHOICE_COUNT = 4;
 
     private static Playwright playwright;
     private static Browser browser;
@@ -71,13 +75,13 @@ class QuizSystemTest {
     @Test
     void topPage_displaysQuizList() {
         page.navigate(BASE_URL);
-        var quizLinks = page.locator("a.list-group-item");
+        var quizLinks = page.locator(QUIZ_LIST_ITEM_SELECTOR);
 
         assertTrue(page.title().contains("この数字、なんの数字？"),
                 "トップページのタイトルに「この数字、なんの数字？」が含まれること");
         assertTrue(page.locator("h1").textContent().contains("クイズ一覧"),
                 "一覧画面にクイズ一覧見出しが表示されること");
-        assertEquals(3, quizLinks.count(),
+        assertEquals(EXPECTED_QUIZ_COUNT, quizLinks.count(),
                 "クイズ一覧に3件のクイズが表示されること");
         assertTrue(quizLinks.nth(0).textContent().contains("数字: 3,776"),
                 "1件目のクイズに数字 3,776 が表示されること");
@@ -96,7 +100,7 @@ class QuizSystemTest {
     @Test
     void quizPage_displaysQuestionAndChoices() {
         page.navigate(BASE_URL + "/quiz/1");
-        var choiceButtons = page.locator("form button[type='submit']");
+        var choiceButtons = page.locator(CHOICE_BUTTON_SELECTOR);
 
         assertTrue(page.title().contains("Q1 - この数字、なんの数字？"),
                 "出題画面のタイトルにクイズ番号とアプリ名が表示されること");
@@ -104,7 +108,7 @@ class QuizSystemTest {
                 "出題画面に数字 3,776 が表示されること");
         assertEquals("この数字、なんの数字？", page.locator("p.lead").textContent().trim(),
                 "出題画面に問題文が表示されること");
-        assertEquals(4, choiceButtons.count(),
+        assertEquals(EXPECTED_CHOICE_COUNT, choiceButtons.count(),
                 "出題画面に4つの選択肢ボタンが表示されること");
         assertEquals("東京スカイツリーの高さ（メートル）", choiceButtons.nth(0).textContent().trim(),
                 "1つ目の選択肢が表示されること");
