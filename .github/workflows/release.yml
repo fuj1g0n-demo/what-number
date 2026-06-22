@@ -1,0 +1,183 @@
+name: Release
+
+# =============================================================================
+# リリースワークフロー（Java/Gradle の SNAPSHOT 流儀に準拠した「2 コミット振り付け」）
+# -----------------------------------------------------------------------------
+# トリガー : 手動実行（workflow_dispatch）。リリース版と次期開発版を手入力する。
+# 行うこと :
+#   1. 入力検証（リリース版は -SNAPSHOT 無し / 次期開発版は -SNAPSHOT 付き / タグ未存在）
+#   2. gradle.properties の version をリリース版へ書き換え
+#   3. ビルド + テスト（Unit + Integration）でリリース品質をゲート
+#   4. リリースコミットを作成し、注釈付きタグ v<release> を「そのコミット」に付与
+#   5. Java 成果物（bootJar）を Maven レジストリへ発行（Azure Artifacts / GitHub Packages）
+#   6. リリースコミットとタグを main へ push
+#   7. GitHub Release を作成（リリースノートは --generate-notes で自動生成、bootJar を添付）
+#   8. version を次期開発版（-SNAPSHOT 付き）へ戻すコミットを作成し main へ push
+#
+# 重要 : タグ v<release> は手順 4 の「リリースコミット」を指す。
+#        手順 8 の「次期開発版コミット」より前に確定させるため、タグずれは起きない。
+#
+# 本番（prod）へのデプロイは本ワークフローには含めない（成果物発行とタグ/ノートのみ）。
+#
+# 注意 : main がブランチ保護で直接 push を禁止している場合、リリースボット
+#        （または専用 PAT）に保護のバイパスを許可する必要がある。
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: "リリースする版（-SNAPSHOT 無し）例: 1.0.0"
+        required: true
+        type: string
+      next_dev_version:
+        description: "次期開発版（-SNAPSHOT 付き）例: 1.0.1-SNAPSHOT"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # コミット / タグ / リリースの作成・push
+  packages: write   # GitHub Packages への発行
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: ${{ inputs.release_version }}
+      NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+    steps:
+      - name: Checkout main (full history)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validate inputs
+        run: |
+          set -euo pipefail
+          echo "release_version  = ${RELEASE_VERSION}"
+          echo "next_dev_version = ${NEXT_DEV_VERSION}"
+
+          # リリース版は SNAPSHOT を含んではならない
+          if echo "${RELEASE_VERSION}" | grep -q 'SNAPSHOT'; then
+            echo "::error::release_version に SNAPSHOT を含めることはできません: ${RELEASE_VERSION}"
+            exit 1
+          fi
+          # リリース版は X.Y.Z 形式（任意で -<qualifier> 可）であること
+          if ! echo "${RELEASE_VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'; then
+            echo "::error::release_version の形式が不正です（例: 1.0.0）: ${RELEASE_VERSION}"
+            exit 1
+          fi
+          # 次期開発版は -SNAPSHOT で終わること
+          if ! echo "${NEXT_DEV_VERSION}" | grep -qE -- '-SNAPSHOT$'; then
+            echo "::error::next_dev_version は -SNAPSHOT で終わる必要があります: ${NEXT_DEV_VERSION}"
+            exit 1
+          fi
+          # 同名タグが既に存在していないこと
+          if git ls-remote --exit-code --tags origin "refs/tags/v${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "::error::タグ v${RELEASE_VERSION} は既に存在します"
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Set release version in gradle.properties
+        run: |
+          set -euo pipefail
+          sed -i -E "s/^version=.*/version=${RELEASE_VERSION}/" gradle.properties
+          echo "---- gradle.properties (release) ----"
+          grep -E '^(group|version)=' gradle.properties
+
+      - name: Build & test (release gate)
+        run: ./gradlew :app:build --no-daemon
+
+      - name: Create release commit and tag
+        run: |
+          set -euo pipefail
+          git commit -am "release: v${RELEASE_VERSION} [skip ci]"
+          git tag -a "v${RELEASE_VERSION}" -m "Release v${RELEASE_VERSION}"
+          echo "Tagged v${RELEASE_VERSION} at $(git rev-parse --short HEAD)"
+
+      - name: Publish jar to Azure Artifacts (Maven)
+        env:
+          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
+          AZURE_ARTIFACTS_USER: AzureDevOps
+          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          echo "Publishing com.example:what-number:${RELEASE_VERSION} to Azure Artifacts"
+          ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository \
+            -PartifactVersion="${RELEASE_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (Azure Artifacts)"
+            echo ""
+            echo "- 座標: \`com.example:what-number:${RELEASE_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish jar to GitHub Packages (Maven)
+        env:
+          GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Publishing com.example:what-number:${RELEASE_VERSION} to GitHub Packages"
+          ./gradlew :app:publishBootAppPublicationToGithubPackagesRepository \
+            -PartifactVersion="${RELEASE_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (GitHub Packages)"
+            echo ""
+            echo "- 座標: \`com.example:what-number:${RELEASE_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push release commit and tag to main
+        run: |
+          set -euo pipefail
+          git push origin HEAD:main
+          git push origin "v${RELEASE_VERSION}"
+
+      - name: Create GitHub Release with auto-generated notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
+          echo "Release asset: ${JAR}"
+          gh release create "v${RELEASE_VERSION}" \
+            --title "v${RELEASE_VERSION}" \
+            --generate-notes \
+            "${JAR}#what-number-${RELEASE_VERSION}.jar"
+
+      - name: Prepare next development version
+        run: |
+          set -euo pipefail
+          sed -i -E "s/^version=.*/version=${NEXT_DEV_VERSION}/" gradle.properties
+          echo "---- gradle.properties (next dev) ----"
+          grep -E '^(group|version)=' gradle.properties
+          git commit -am "prepare: next development iteration ${NEXT_DEV_VERSION} [skip ci]"
+          git push origin HEAD:main
+
+      - name: Summary
+        run: |
+          {
+            echo "## リリース完了"
+            echo ""
+            echo "- リリース版: \`${RELEASE_VERSION}\`（タグ \`v${RELEASE_VERSION}\`）"
+            echo "- 次期開発版: \`${NEXT_DEV_VERSION}\`"
+            echo "- GitHub Release: ノート自動生成 + bootJar 添付"
+            echo "- Maven 発行: Azure Artifacts / GitHub Packages"
+          } >> "$GITHUB_STEP_SUMMARY"

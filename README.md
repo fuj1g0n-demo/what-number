@@ -98,6 +98,7 @@ PR ごとに専用のプレビュー環境を **2 種類の Azure ホスティ�
 | `ci-pr-local.yml` | CI | PR (main): open / synchronize / reopen | なし（ローカル） | Build → Unit → Integration → System Test（ランナー内でローカル起動して検証） |
 | `ci-pr-remote.yml` | CI | PR (main): open / synchronize / reopen / close | PR 専用プレビュー環境（固有 URL） | PR ごとに **Container App**（コンテナ）と **App Service Web App**（Java SE 21 / bootJar）を並行作成 → 各固有 URL でデプロイ → E2E 実行 → URL を PR にコメント。クローズ時に両方を削除 |
 | `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts と GitHub Packages（Maven）へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ（リリース時に本番 prod へ展開する想定） |
+| `release.yml` | リリース | 手動（`workflow_dispatch`、版を手入力） | － | バージョンを確定（`-SNAPSHOT` を外す）→ ビルド/テスト → タグ付け → Maven 発行 → GitHub Release（ノート自動生成）→ 次期開発版（`-SNAPSHOT`）へ戻す |
 | `infra-bootstrap.yml` | セットアップ | 手動（`workflow_dispatch`） | － | 新規リソースグループ・ACR・マネージド ID・ACA 環境・App Service プランを作成（初回 1 回のみ） |
 | `ttl-cleanup.yml` | 運用 | 15 分毎 / 手動 | － | TTL 期限切れ（最終 push から 1 時間）のプレビュー環境（Container App / Web App）を削除 |
 
@@ -135,6 +136,39 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 > メモ: App Service プランは空になると自動削除されることがあるため、`cd-merge.yml` の
 > `deploy-appservice` ジョブはデプロイ前にプランの存在を確認し、無ければ冪等に再作成します。
+
+### リリース手順（`release.yml`）
+
+バージョン管理は **`gradle.properties` の `version` を単一正本**とし、Java/Gradle の流儀に従います。
+
+- 開発中（`main`）は常に `-SNAPSHOT` 付き（例: `0.0.1-SNAPSHOT`）。
+- リリース版は `-SNAPSHOT` を外した不変版（例: `1.0.0`）。
+
+リリースは GitHub Actions の **`release.yml` を手動実行**して行います（**バージョン書き換えを手作業で行わないこと**）。
+
+1. リポジトリ → **Actions → Release → Run workflow** を開く。
+2. 入力欄に次を指定して実行する。
+   - `release_version`: リリースする版（`-SNAPSHOT` 無し）。例 `1.0.0`
+   - `next_dev_version`: 次期開発版（`-SNAPSHOT` 付き）。例 `1.0.1-SNAPSHOT`
+3. ワークフローが以下を自動実行する。
+   1. 入力検証（リリース版に `-SNAPSHOT` が無いこと／次期開発版に `-SNAPSHOT` が有ること／同名タグ未存在）
+   2. `gradle.properties` をリリース版へ書き換え
+   3. `:app:build`（Unit + Integration Test）でリリース品質をゲート
+   4. **リリースコミット**を作成し、注釈付きタグ `v<release_version>` を**そのコミットに**付与
+   5. bootJar を Maven レジストリ（Azure Artifacts / GitHub Packages）へ `<release_version>` で発行
+   6. リリースコミットとタグを `main` へ push
+   7. **GitHub Release** を作成（リリースノートは自動生成 `--generate-notes`、bootJar を添付）
+   8. `gradle.properties` を **次期開発版（`-SNAPSHOT`）へ戻すコミット**を作成し `main` へ push
+
+> タグ `v<release_version>` は手順 4 の「リリースコミット」を指します。手順 8 の「次期開発版コミット」より前に
+> 確定するため、タグと版の対応がずれることはありません。
+>
+> 本番（prod）デプロイは `release.yml` には含めていません（成果物発行・タグ・リリースノートのみ）。
+>
+> リリースボットのコミットには `[skip ci]` を付与しているため、これらの push で `cd-merge.yml` は起動しません。
+>
+> 注意: `main` がブランチ保護で直接 push を禁止している場合は、リリース実行者（GitHub Actions ボットまたは
+> 専用 PAT）に保護のバイパスを許可してください。
 
 ### セットアップ手順
 
