@@ -48,11 +48,12 @@ jobs:
         uses: microsoft/security-devops-action@latest
         id: msdo
         with:
-          # 既定ポリシーで動いていたツールに加えて Trivy を実行する。
-          # tools を指定すると実行ツールが「明示指定セット」に置き換わるため、
-          # 既存ツール（bandit / binskim / checkov / eslint / templateanalyzer）も
-          # 明記したうえで trivy を追加する。
-          tools: bandit,binskim,checkov,eslint,templateanalyzer,trivy
+          # 既定ポリシーで実際に動作していた checkov / templateanalyzer に
+          # trivy（コンテナ/依存/ファイルシステムの脆弱性スキャン）を追加する。
+          # tools を明示指定すると指定セットのみ実行される。bandit / binskim /
+          # eslint は本リポジトリに対象（Python / バイナリ / JS,TS）が無く、
+          # 明示指定するとターゲット無しでエラー終了し build break するため含めない。
+          tools: checkov,templateanalyzer,trivy
 
       # 出力 SARIF を GitHub の code scanning（Security タブ）へアップロード
       # category を付与して CodeQL の結果と区別する
