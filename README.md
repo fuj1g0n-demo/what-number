@@ -124,6 +124,16 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 各デプロイ後に HTTP 200 を確認するスモークチェックを実行します。
 
+#### 現在のステージングデプロイ先 URL
+
+| ホスティング | URL |
+|---|---|
+| Azure Container Apps | https://quiz-app-staging.livelycoast-5b8df27f.japaneast.azurecontainerapps.io |
+| Azure App Service | https://quiz-app-15679f-staging.azurewebsites.net |
+
+> メモ: App Service プランは空になると自動削除されることがあるため、`cd-merge.yml` の
+> `deploy-appservice` ジョブはデプロイ前にプランの存在を確認し、無ければ冪等に再作成します。
+
 ### セットアップ手順
 
 1. **Microsoft Entra ID にアプリ登録**を作成し、GitHub Actions 用の
