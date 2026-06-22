@@ -28,6 +28,8 @@ env:
   ACA_ENVIRONMENT: ${{ vars.ACA_ENVIRONMENT }}
   ACR_PULL_IDENTITY_NAME: ${{ vars.ACR_PULL_IDENTITY_NAME }}
   APP_SERVICE_PLAN: ${{ vars.APP_SERVICE_PLAN }}
+  APP_SERVICE_LOCATION: ${{ vars.APP_SERVICE_LOCATION || vars.AZURE_LOCATION }}
+  APP_SERVICE_PLAN_SKU: ${{ vars.APP_SERVICE_PLAN_SKU || 'B1' }}
   IMAGE_REPO: quiz-app
   # Azure DevOps Artifacts
   AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
@@ -231,6 +233,24 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure App Service plan exists
+        run: |
+          # 空になった F1（Free）プランは Azure により自動削除されることがあるため
+          # （例: PR クローズ時にプレビュー Web App が削除されプランが空になる）、
+          # デプロイのたびにプランの存在を確認し、無ければ冪等に作成する。
+          if az appservice plan show -n "$APP_SERVICE_PLAN" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
+            echo "Reusing existing App Service plan: $APP_SERVICE_PLAN"
+          else
+            echo "Creating App Service plan: $APP_SERVICE_PLAN ($APP_SERVICE_PLAN_SKU / $APP_SERVICE_LOCATION)"
+            az appservice plan create \
+              --name "$APP_SERVICE_PLAN" \
+              --resource-group "$RESOURCE_GROUP" \
+              --is-linux \
+              --sku "$APP_SERVICE_PLAN_SKU" \
+              --location "$APP_SERVICE_LOCATION" \
+              --output none
+          fi
 
       - name: Create or reuse staging web app and deploy jar
         id: deploy
