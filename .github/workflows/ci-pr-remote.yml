@@ -234,6 +234,7 @@ jobs:
     permissions:
       contents: read
       id-token: write         # Azure Login / ACR pull (OIDC) 用
+      actions: read           # private リポジトリで upload-sarif が run 情報取得に必要
       security-events: write  # code scanning への SARIF 投入に必須（GHAS 前提）
     env:
       PR_NUM: ${{ github.event.pull_request.number }}
