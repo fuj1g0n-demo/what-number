@@ -14,9 +14,6 @@ import org.junit.jupiter.api.TestInfo;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -60,8 +57,6 @@ class QuizSystemTest {
                     "日本で一番深い湖の深さ（メートル）"
             ))
     );
-    private static final Map<Integer, QuizListItemExpectation> EXPECTED_QUIZZES_BY_ID = EXPECTED_QUIZZES.stream()
-            .collect(Collectors.toUnmodifiableMap(QuizListItemExpectation::id, Function.identity()));
     private static final int QUIZ_ID_FOR_QUESTION_PAGE_TEST = 1;
 
     private static Playwright playwright;
@@ -71,6 +66,9 @@ class QuizSystemTest {
     private record QuizListItemExpectation(int id, String number, String path, List<String> choices) {
     }
 
+    /**
+     * Returns trimmed text content for the given locator and fails fast when the element has no text.
+     */
     private String requiredTextContent(com.microsoft.playwright.Locator locator, String message) {
         String text = locator.textContent();
         assertNotNull(text, message);
@@ -128,14 +126,16 @@ class QuizSystemTest {
             assertTrue(requiredTextContent(quizLinks.nth(i), (i + 1) + "件目のクイズ項目が取得できること")
                             .contains(QUIZ_NUMBER_LABEL_PREFIX + expectedQuiz.number()),
                     (i + 1) + "件目のクイズに数字が表示されること");
-            assertTrue(quizLinks.nth(i).getAttribute("href").endsWith(expectedQuiz.path()),
+            String href = quizLinks.nth(i).getAttribute("href");
+            assertNotNull(href, (i + 1) + "件目のクイズ項目にhref属性があること");
+            assertTrue(href.endsWith(expectedQuiz.path()),
                     (i + 1) + "件目のクイズから対応する出題画面に遷移できること");
         }
     }
 
     @Test
     void quizPage_displaysQuestionAndChoices() {
-        var expectedQuiz = EXPECTED_QUIZZES_BY_ID.get(QUIZ_ID_FOR_QUESTION_PAGE_TEST);
+        var expectedQuiz = EXPECTED_QUIZZES.get(QUIZ_ID_FOR_QUESTION_PAGE_TEST - 1);
         page.navigate(BASE_URL + "/quiz/" + QUIZ_ID_FOR_QUESTION_PAGE_TEST);
         var choiceButtons = page.locator(CHOICE_BUTTON_SELECTOR);
 
