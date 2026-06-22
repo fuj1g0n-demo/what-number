@@ -1,8 +1,12 @@
-name: CD (Merge) - Production Deploy
+name: CD (Merge) - Staging Deploy
 
 # トリガー : main への push（= PR マージ）／手動実行（workflow_dispatch）
-# デプロイ先: 本番用 Azure Container App（本番環境）
-# 内容     : イメージ build -> 本番 ACA へ deploy（継続デプロイ / Continuous Deployment）
+# デプロイ先: ステージング環境（リリース時に本番 prod へ展開する想定）
+#   - Azure Container Apps (staging)
+#   - Azure App Service   (staging)
+# 成果物   : 本プロジェクトの Java 成果物 (bootJar) を Azure DevOps の
+#            Azure Artifacts (Maven フィード) へ発行する
+# 構成     : build-and-publish -> (deploy-aca / deploy-appservice を並列実行)
 
 on:
   push:
@@ -23,15 +27,80 @@ env:
   ACR_NAME: ${{ vars.ACR_NAME }}
   ACA_ENVIRONMENT: ${{ vars.ACA_ENVIRONMENT }}
   ACR_PULL_IDENTITY_NAME: ${{ vars.ACR_PULL_IDENTITY_NAME }}
-  APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}
+  APP_SERVICE_PLAN: ${{ vars.APP_SERVICE_PLAN }}
   IMAGE_REPO: quiz-app
+  # Azure DevOps Artifacts
+  AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
+  AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
 
 jobs:
-  build-and-deploy:
+  # ---------------------------------------------------------------------------
+  # ビルド & 成果物発行: bootJar をビルドし、ACR へイメージを push、
+  #                      Java 成果物を Azure Artifacts (Maven) へ発行する
+  # ---------------------------------------------------------------------------
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build bootJar
+        run: |
+          ./gradlew :app:bootJar
+          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
+          echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
+          echo "Built jar: $JAR"
+
+      - name: Upload bootJar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bootjar
+          path: app/build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Ensure Azure Artifacts feed exists (best-effort)
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          # フィードが無ければ作成する。既存(409)や権限不足(403)でも publish は
+          # 既存フィードに対して動作するため、ここでは失敗で停止させない。
+          code=$(curl -s -o /tmp/feed.json -w '%{http_code}' \
+            -u ":${AZURE_DEVOPS_PAT}" \
+            -H "Content-Type: application/json" \
+            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/_apis/packaging/feeds?api-version=7.1-preview.1" \
+            -d "{\"name\":\"${AZURE_ARTIFACTS_FEED}\"}" || echo "000")
+          echo "feed ensure HTTP ${code}"
+          case "$code" in
+            201) echo "フィード '${AZURE_ARTIFACTS_FEED}' を新規作成しました。" ;;
+            409) echo "フィード '${AZURE_ARTIFACTS_FEED}' は既存です。" ;;
+            *)   echo "フィード作成はスキップ（既存または作成権限不足）。既存フィードへ publish します。" ;;
+          esac
+
+      - name: Publish jar to Azure Artifacts (Maven)
+        env:
+          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
+          AZURE_ARTIFACTS_USER: AzureDevOps
+          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          ARTIFACT_VERSION="0.0.1-${SHORT_SHA}"
+          echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
+          ./gradlew :app:publish -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (Azure Artifacts)"
+            echo ""
+            echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG})"
+            echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -46,27 +115,47 @@ jobs:
           az acr build \
             --registry "$ACR_NAME" \
             --image "${IMAGE_REPO}:${{ github.sha }}" \
-            --image "${IMAGE_REPO}:latest" \
+            --image "${IMAGE_REPO}:staging" \
             --file Dockerfile \
             .
 
-      - name: Deploy container app
+  # ---------------------------------------------------------------------------
+  # deploy-aca: ステージング用 Azure Container App へデプロイ
+  # ---------------------------------------------------------------------------
+  deploy-aca:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      ACA_APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}-staging
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy container app (staging)
         id: deploy
         run: |
+          az extension add --name containerapp --upgrade --only-show-errors
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           UAMI_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query id -o tsv)
 
-          if az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
-            echo "Updating existing container app: $APP_NAME"
+          if az containerapp show -n "$ACA_APP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
+            echo "Updating existing container app: $ACA_APP_NAME"
             az containerapp update \
-              --name "$APP_NAME" \
+              --name "$ACA_APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --image "$IMAGE" \
               --output none
           else
-            echo "Creating container app: $APP_NAME"
+            echo "Creating container app: $ACA_APP_NAME"
             az containerapp create \
-              --name "$APP_NAME" \
+              --name "$ACA_APP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
               --environment "$ACA_ENVIRONMENT" \
               --image "$IMAGE" \
@@ -78,18 +167,150 @@ jobs:
               --min-replicas 1 \
               --max-replicas 2 \
               --cpu 0.5 --memory 1.0Gi \
-              --tags Project=quiz-app Environment=production \
+              --tags Project=quiz-app Environment=staging \
               --output none
           fi
 
-          FQDN=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" \
+          FQDN=$(az containerapp show -n "$ACA_APP_NAME" -g "$RESOURCE_GROUP" \
             --query properties.configuration.ingress.fqdn -o tsv)
           echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for staging to be ready
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Waiting for $URL to return HTTP 200..."
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "Staging (ACA) is ready (HTTP $CODE)."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $CODE, retrying in 10s..."
+            sleep 10
+          done
+          echo "Staging (ACA) did not become ready in time."
+          exit 1
 
       - name: Show deployed URL
         run: |
           {
-            echo "## Deployment Complete"
+            echo "## Staging Deploy (Azure Container Apps)"
+            echo ""
+            echo "**URL:** ${{ steps.deploy.outputs.url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # deploy-appservice: ステージング用 Azure App Service へデプロイ
+  # ---------------------------------------------------------------------------
+  deploy-appservice:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      WEBAPP_NAME: ${{ vars.APP_SERVICE_WEBAPP_PREFIX }}-staging
+    steps:
+      - name: Download bootJar artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-bootjar
+          path: app/build/libs
+
+      - name: Resolve jar path
+        run: |
+          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
+          echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
+          echo "Jar to deploy: $JAR"
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Create or reuse staging web app and deploy jar
+        id: deploy
+        run: |
+          if az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
+            echo "Reusing existing staging web app: $WEBAPP_NAME"
+          else
+            echo "Creating staging web app: $WEBAPP_NAME"
+            # GitHub ホストランナーの az CLI はランタイムカタログが古く
+            # （JAVA|11-java11 までしか持たない）、create 時に Java 21 を直接指定すると
+            # 「not supported」で弾かれる。そこでまず Java 21 を試し、失敗した場合は
+            # カタログに存在する Java 11 で作成してから linux-fx-version で Java 21 を
+            # 強制する（linux-fx-version は生のパススルーでカタログ検証されず、
+            # App Service プラットフォーム側は Java 21 を提供するため動作する）。
+            if ! az webapp create \
+                  --name "$WEBAPP_NAME" \
+                  --resource-group "$RESOURCE_GROUP" \
+                  --plan "$APP_SERVICE_PLAN" \
+                  --runtime "JAVA:21-java21" \
+                  --output none 2>/dev/null; then
+              echo "Java 21 の直接指定に失敗。Java 11 で作成し linux-fx-version で上書きします。"
+              az webapp create \
+                --name "$WEBAPP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --plan "$APP_SERVICE_PLAN" \
+                --runtime "JAVA:11-java11" \
+                --output none \
+              || az webapp create \
+                --name "$WEBAPP_NAME" \
+                --resource-group "$RESOURCE_GROUP" \
+                --plan "$APP_SERVICE_PLAN" \
+                --runtime "JAVA|11-java11" \
+                --output none
+            fi
+            # 実行ランタイムを Java 21 に強制する
+            az webapp config set \
+              --name "$WEBAPP_NAME" \
+              --resource-group "$RESOURCE_GROUP" \
+              --linux-fx-version "JAVA|21-java21" \
+              --output none
+          fi
+
+          # ステージング識別用タグを付与
+          APP_ID=$(az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
+          az tag update \
+            --resource-id "$APP_ID" \
+            --operation Merge \
+            --tags Project=quiz-app Environment=staging \
+            --output none
+
+          # bootJar をデプロイ（App Service が app.jar にリネームして実行）
+          az webapp deploy \
+            --name "$WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --type jar \
+            --src-path "$JAR_PATH" \
+            --output none
+
+          FQDN=$(az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" \
+            --query defaultHostName -o tsv)
+          echo "url=https://${FQDN}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for staging to be ready
+        run: |
+          URL="${{ steps.deploy.outputs.url }}"
+          echo "Waiting for $URL to return HTTP 200..."
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "Staging (App Service) is ready (HTTP $CODE)."
+              exit 0
+            fi
+            echo "Attempt $i: HTTP $CODE, retrying in 10s..."
+            sleep 10
+          done
+          echo "Staging (App Service) did not become ready in time."
+          exit 1
+
+      - name: Show deployed URL
+        run: |
+          {
+            echo "## Staging Deploy (Azure App Service)"
             echo ""
             echo "**URL:** ${{ steps.deploy.outputs.url }}"
           } >> "$GITHUB_STEP_SUMMARY"

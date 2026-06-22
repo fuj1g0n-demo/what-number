@@ -1,6 +1,7 @@
 plugins {
     java
     jacoco
+    `maven-publish`
     id("org.springframework.boot") version "3.4.3"
     id("io.spring.dependency-management") version "1.1.7"
 }
@@ -118,4 +119,34 @@ tasks.register<JacocoReport>("jacocoFullReport") {
 
 tasks.named("check") {
     dependsOn(tasks.named("integrationTest"))
+}
+
+// ---------------------------------------------------------------------------
+// Azure Artifacts (Maven フィード) への発行設定
+//   - 実行可能 bootJar を成果物として発行する
+//   - バージョンは CI から -PartifactVersion で上書き可能（既定は project.version）
+//   - 接続情報は環境変数で注入（CI 専用。ローカルの通常ビルドには影響しない）
+//       AZURE_ARTIFACTS_FEED_URL : フィードの Maven エンドポイント URL
+//       AZURE_ARTIFACTS_USER     : 任意のユーザー名（PAT 使用時は値は問われない）
+//       AZURE_ARTIFACTS_PAT      : Azure DevOps Personal Access Token
+// ---------------------------------------------------------------------------
+publishing {
+    publications {
+        create<MavenPublication>("bootApp") {
+            groupId = "com.example"
+            artifactId = "what-number"
+            version = (project.findProperty("artifactVersion") as String?) ?: project.version.toString()
+            artifact(tasks.named("bootJar"))
+        }
+    }
+    repositories {
+        maven {
+            name = "azureArtifacts"
+            url = uri(providers.environmentVariable("AZURE_ARTIFACTS_FEED_URL").orElse("").get())
+            credentials {
+                username = providers.environmentVariable("AZURE_ARTIFACTS_USER").orElse("AzureDevOps").get()
+                password = providers.environmentVariable("AZURE_ARTIFACTS_PAT").orElse("").get()
+            }
+        }
+    }
 }
