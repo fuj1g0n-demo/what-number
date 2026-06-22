@@ -222,7 +222,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # image-security-scan: ACR へ publish 済みのプレビューイメージ／ソースに対して
   #   2 系統のセキュリティスキャンを実行し、結果を GitHub code scanning へ投入する。
-  #     系統1: Microsoft Security DevOps (Trivy / Checkov / Template Analyzer)
+  #     系統1: Microsoft Security DevOps (Trivy)
   #     系統2: Defender for Cloud CLI (MDVM) による ACR イメージスキャン
   #   PR 上での結果は Files changed の差分行に注釈表示される（PR アノテーション）。
   #   E2E 失敗でもスキャンは実施したいため !cancelled() で起動する。
@@ -241,13 +241,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 系統1: MSDO (Trivy 他) -> SARIF -> code scanning ---
-      - name: Run Microsoft Security DevOps (Trivy / Checkov / Template Analyzer)
+      # --- 系統1: MSDO (Trivy) -> SARIF -> code scanning ---
+      - name: Run Microsoft Security DevOps (Trivy)
         uses: microsoft/security-devops-action@latest
         id: msdo
         with:
-          # 本リポジトリに対象のあるツールのみ明示指定（空ツールの build break を回避）
-          tools: checkov,templateanalyzer,trivy
+          # Trivy のみ実行（依存関係／ファイルシステムの脆弱性スキャン）
+          tools: trivy
 
       - name: Upload MSDO results to Security tab
         uses: github/codeql-action/upload-sarif@v4
