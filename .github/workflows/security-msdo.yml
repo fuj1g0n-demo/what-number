@@ -47,6 +47,12 @@ jobs:
       - name: Run Microsoft Security DevOps
         uses: microsoft/security-devops-action@latest
         id: msdo
+        with:
+          # 既定ポリシーで動いていたツールに加えて Trivy を実行する。
+          # tools を指定すると実行ツールが「明示指定セット」に置き換わるため、
+          # 既存ツール（bandit / binskim / checkov / eslint / templateanalyzer）も
+          # 明記したうえで trivy を追加する。
+          tools: bandit,binskim,checkov,eslint,templateanalyzer,trivy
 
       # 出力 SARIF を GitHub の code scanning（Security タブ）へアップロード
       # category を付与して CodeQL の結果と区別する
