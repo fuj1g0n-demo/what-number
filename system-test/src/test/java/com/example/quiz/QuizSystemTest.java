@@ -47,12 +47,22 @@ class QuizSystemTest {
                     "日本の島の数",
                     "東京タワーの高さ（メートル）"
             )),
-            new QuizListItemExpectation(2, "47", "/quiz/2", List.of()),
-            new QuizListItemExpectation(3, "634", "/quiz/3", List.of())
+            new QuizListItemExpectation(2, "47", "/quiz/2", List.of(
+                    "日本のプロ野球チーム数",
+                    "日本の世界遺産の数",
+                    "日本の都道府県の数",
+                    "日本の政令指定都市の数"
+            )),
+            new QuizListItemExpectation(3, "634", "/quiz/3", List.of(
+                    "東京タワーの高さ（メートル）",
+                    "日本一長い川の長さ（キロメートル）",
+                    "東京スカイツリーの高さ（メートル）",
+                    "日本で一番深い湖の深さ（メートル）"
+            ))
     );
     private static final Map<Integer, QuizListItemExpectation> EXPECTED_QUIZZES_BY_ID = EXPECTED_QUIZZES.stream()
             .collect(Collectors.toUnmodifiableMap(QuizListItemExpectation::id, Function.identity()));
-    private static final int TARGET_QUIZ_ID = 1;
+    private static final int QUIZ_ID_FOR_QUESTION_PAGE_TEST = 1;
 
     private static Playwright playwright;
     private static Browser browser;
@@ -125,11 +135,11 @@ class QuizSystemTest {
 
     @Test
     void quizPage_displaysQuestionAndChoices() {
-        var expectedQuiz = EXPECTED_QUIZZES_BY_ID.get(TARGET_QUIZ_ID);
-        page.navigate(BASE_URL + "/quiz/" + TARGET_QUIZ_ID);
+        var expectedQuiz = EXPECTED_QUIZZES_BY_ID.get(QUIZ_ID_FOR_QUESTION_PAGE_TEST);
+        page.navigate(BASE_URL + "/quiz/" + QUIZ_ID_FOR_QUESTION_PAGE_TEST);
         var choiceButtons = page.locator(CHOICE_BUTTON_SELECTOR);
 
-        assertTrue(page.title().contains("Q" + TARGET_QUIZ_ID + " - " + EXPECTED_QUESTION),
+        assertTrue(page.title().contains("Q" + QUIZ_ID_FOR_QUESTION_PAGE_TEST + " - " + EXPECTED_QUESTION),
                 "出題画面のタイトルにクイズ番号とアプリ名が表示されること");
         assertEquals(expectedQuiz.number(),
                 requiredTextContent(page.locator(QUIZ_NUMBER_DISPLAY_SELECTOR), "出題画面の数字が取得できること"),
@@ -138,7 +148,7 @@ class QuizSystemTest {
                 requiredTextContent(page.locator(QUESTION_TEXT_SELECTOR), "出題画面の問題文が取得できること"),
                 "出題画面に問題文が表示されること");
         assertEquals(expectedQuiz.choices().size(), choiceButtons.count(),
-                "出題画面に4つの選択肢ボタンが表示されること");
+                "出題画面に" + expectedQuiz.choices().size() + "つの選択肢ボタンが表示されること");
         for (int i = 0; i < expectedQuiz.choices().size(); i++) {
             assertEquals(expectedQuiz.choices().get(i),
                     requiredTextContent(choiceButtons.nth(i), (i + 1) + "つ目の選択肢が取得できること"),
