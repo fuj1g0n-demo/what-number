@@ -98,7 +98,7 @@ PR ごとに専用のプレビュー環境を **2 種類の Azure ホスティ�
 | `ci-pr-local.yml` | CI | PR (main): open / synchronize / reopen | なし（ローカル） | Build → Unit → Integration → System Test（ランナー内でローカル起動して検証） |
 | `ci-pr-remote.yml` | CI | PR (main): open / synchronize / reopen / close | PR 専用プレビュー環境（固有 URL） | PR ごとに **Container App**（コンテナ）と **App Service Web App**（Java SE 21 / bootJar）を並行作成 → 各固有 URL でデプロイ → E2E 実行 → URL を PR にコメント。クローズ時に両方を削除 |
 | `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts と GitHub Packages（Maven）へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ（リリース時に本番 prod へ展開する想定） |
-| `release.yml` | リリース | 手動（`workflow_dispatch`、版を手入力） | － | バージョンを確定（`-SNAPSHOT` を外す）→ ビルド/テスト → タグ付け → Maven 発行 → **ACR へコンテナイメージ発行** → GitHub Release（ノート自動生成）→ 次期開発版（`-SNAPSHOT`）へ戻す。ACA / App Service へのデプロイは行わない（承認者が手動実施） |
+| `cd-release.yml` | CD | 手動（`workflow_dispatch`、版を手入力） | － | バージョンを確定（`-SNAPSHOT` を外す）→ ビルド/テスト → タグ付け → Maven 発行 → **ACR へコンテナイメージ発行** → GitHub Release（ノート自動生成）→ 次期開発版（`-SNAPSHOT`）へ戻す。ACA / App Service へのデプロイは行わない（承認者が手動実施） |
 | `infra-bootstrap.yml` | セットアップ | 手動（`workflow_dispatch`） | － | 新規リソースグループ・ACR・マネージド ID・ACA 環境・App Service プランを作成（初回 1 回のみ） |
 | `ttl-cleanup.yml` | 運用 | 15 分毎 / 手動 | － | TTL 期限切れ（最終 push から 1 時間）のプレビュー環境（Container App / Web App）を削除 |
 
@@ -137,14 +137,14 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 > メモ: App Service プランは空になると自動削除されることがあるため、`cd-merge.yml` の
 > `deploy-appservice` ジョブはデプロイ前にプランの存在を確認し、無ければ冪等に再作成します。
 
-### リリース手順（`release.yml`）
+### リリース手順（`cd-release.yml`）
 
 バージョン管理は **`gradle.properties` の `version` を単一正本**とし、Java/Gradle の流儀に従います。
 
 - 開発中（`main`）は常に `-SNAPSHOT` 付き（例: `0.0.1-SNAPSHOT`）。
 - リリース版は `-SNAPSHOT` を外した不変版（例: `1.0.0`）。
 
-リリースは GitHub Actions の **`release.yml` を手動実行**して行います（**バージョン書き換えを手作業で行わないこと**）。
+リリースは GitHub Actions の **`cd-release.yml` を手動実行**して行います（**バージョン書き換えを手作業で行わないこと**）。
 
 1. リポジトリ → **Actions → Release → Run workflow** を開く。
 2. 入力欄に次を指定して実行する。
@@ -164,7 +164,7 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 > タグ `v<release_version>` は手順 4 の「リリースコミット」を指します。手順 9 の「次期開発版コミット」より前に
 > 確定するため、タグと版の対応がずれることはありません。
 >
-> **ACA / App Service への本番デプロイは `release.yml` には含めていません**（承認者が手動で実施する想定）。
+> **ACA / App Service への本番デプロイは `cd-release.yml` には含めていません**（承認者が手動で実施する想定）。
 > 本ワークフローは成果物（Maven / コンテナイメージ）の発行・タグ付け・リリースノート生成のみを行います。
 > 発行されたコンテナイメージ `quiz-app:<release_version>` を承認者が ACA / App Service へ手動デプロイします。
 >
