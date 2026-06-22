@@ -7,7 +7,7 @@ plugins {
 }
 
 // group / version はリポジトリルートの gradle.properties を単一正本とする
-// （全サブプロジェクトへ適用される）。リリースは release.yml が version を書き換える。
+// （全サブプロジェクトへ適用される）。リリースは cd-release.yml が version を書き換える。
 
 java {
     toolchain {
