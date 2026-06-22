@@ -97,7 +97,10 @@ jobs:
           AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          ARTIFACT_VERSION="0.0.1-${SHORT_SHA}"
+          # バージョンは gradle.properties を単一正本とする。-SNAPSHOT を外した
+          # 基底バージョンに short-sha を付与してステージング成果物を一意化する。
+          BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
+          ARTIFACT_VERSION="${BASE_VERSION}-${SHORT_SHA}"
           echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
           ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
           {
@@ -114,7 +117,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          ARTIFACT_VERSION="0.0.1-${SHORT_SHA}"
+          # バージョンは gradle.properties を単一正本とする（上と同じ算出）。
+          BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
+          ARTIFACT_VERSION="${BASE_VERSION}-${SHORT_SHA}"
           echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to GitHub Packages (${GITHUB_PACKAGES_URL})"
           ./gradlew :app:publishBootAppPublicationToGithubPackagesRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
           {
