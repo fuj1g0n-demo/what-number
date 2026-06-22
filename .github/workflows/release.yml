@@ -10,14 +10,17 @@ name: Release
 #   3. ビルド + テスト（Unit + Integration）でリリース品質をゲート
 #   4. リリースコミットを作成し、注釈付きタグ v<release> を「そのコミット」に付与
 #   5. Java 成果物（bootJar）を Maven レジストリへ発行（Azure Artifacts / GitHub Packages）
-#   6. リリースコミットとタグを main へ push
-#   7. GitHub Release を作成（リリースノートは --generate-notes で自動生成、bootJar を添付）
-#   8. version を次期開発版（-SNAPSHOT 付き）へ戻すコミットを作成し main へ push
+#   6. コンテナイメージを ACR へ発行（az acr build。デプロイは行わず登録のみ）
+#   7. リリースコミットとタグを main へ push
+#   8. GitHub Release を作成（リリースノートは --generate-notes で自動生成、bootJar を添付）
+#   9. version を次期開発版（-SNAPSHOT 付き）へ戻すコミットを作成し main へ push
 #
 # 重要 : タグ v<release> は手順 4 の「リリースコミット」を指す。
-#        手順 8 の「次期開発版コミット」より前に確定させるため、タグずれは起きない。
+#        手順 9 の「次期開発版コミット」より前に確定させるため、タグずれは起きない。
 #
-# 本番（prod）へのデプロイは本ワークフローには含めない（成果物発行とタグ/ノートのみ）。
+# 本番（prod）への ACA / App Service デプロイは本ワークフローに含めない
+# （承認者が手動で実施する想定）。成果物（Maven / コンテナイメージ）の
+# 発行・タグ・リリースノートのみを行う。
 #
 # 注意 : main がブランチ保護で直接 push を禁止している場合、リリースボット
 #        （または専用 PAT）に保護のバイパスを許可する必要がある。
@@ -42,6 +45,7 @@ concurrency:
 permissions:
   contents: write   # コミット / タグ / リリースの作成・push
   packages: write   # GitHub Packages への発行
+  id-token: write   # Azure OIDC ログイン（ACR への az acr build）
 
 jobs:
   release:
@@ -49,6 +53,8 @@ jobs:
     env:
       RELEASE_VERSION: ${{ inputs.release_version }}
       NEXT_DEV_VERSION: ${{ inputs.next_dev_version }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      IMAGE_REPO: quiz-app
     steps:
       - name: Checkout main (full history)
         uses: actions/checkout@v4
@@ -144,6 +150,33 @@ jobs:
             echo "- 座標: \`com.example:what-number:${RELEASE_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build and push container image to ACR
+        # ACA / App Service へのデプロイは行わない（承認者が手動実施する想定）。
+        # リリース版のコンテナイメージを ACR へ登録（発行）するのみ。
+        run: |
+          set -euo pipefail
+          echo "Building and pushing ${IMAGE_REPO}:${RELEASE_VERSION} to ACR '${ACR_NAME}'"
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${IMAGE_REPO}:${RELEASE_VERSION}" \
+            --image "${IMAGE_REPO}:latest" \
+            --file Dockerfile \
+            .
+          {
+            echo "## コンテナイメージの発行 (ACR)"
+            echo ""
+            echo "- レジストリ: \`${ACR_NAME}.azurecr.io\`"
+            echo "- イメージ: \`${IMAGE_REPO}:${RELEASE_VERSION}\` / \`${IMAGE_REPO}:latest\`"
+            echo "- デプロイは行わない（承認者が手動実施）"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Push release commit and tag to main
         run: |
           set -euo pipefail
@@ -180,4 +213,5 @@ jobs:
             echo "- 次期開発版: \`${NEXT_DEV_VERSION}\`"
             echo "- GitHub Release: ノート自動生成 + bootJar 添付"
             echo "- Maven 発行: Azure Artifacts / GitHub Packages"
+            echo "- コンテナイメージ発行: ACR \`${IMAGE_REPO}:${RELEASE_VERSION}\` / \`latest\`（デプロイは承認者が手動実施）"
           } >> "$GITHUB_STEP_SUMMARY"
