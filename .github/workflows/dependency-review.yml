@@ -3,8 +3,15 @@ name: Dependency Review
 # トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン）
 # 内容     : PR で追加・変更される依存関係を走査し、既知の脆弱性や
 #            ライセンス違反を検出して PR をゲートする。
-#            依存関係グラフは dependency-submission ワークフローが
-#            main で登録したものを基準に差分比較する。
+#
+# 注意 (Gradle 固有) :
+#   GitHub は Maven と異なり build.gradle(.kts) を自動解析できないため、
+#   PR の head コミットに対しても依存関係グラフを明示的に送信しないと
+#   dependency-review-action は差分を検出できない
+#   （"No snapshots were found for the head SHA ..." となり何も検出されない）。
+#   そのため、レビュー実行前に gradle/actions/dependency-submission で
+#   head コミットの依存グラフを生成・送信する。
+#   base 側のグラフは dependency-submission.yml が main で登録している。
 
 on:
   pull_request:
@@ -12,7 +19,7 @@ on:
     types: [opened, synchronize, reopened]
 
 permissions:
-  contents: read
+  contents: write        # 依存グラフ送信 (dependency submission) に必要
   pull-requests: write
 
 jobs:
@@ -22,6 +29,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # PR の head コミットの Gradle 依存グラフを生成して GitHub へ送信する。
+      # これにより直後の Dependency Review が base との差分を解決できる。
+      - name: Generate and submit dependency graph
+        uses: gradle/actions/dependency-submission@v4
+
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
         with:
@@ -29,3 +47,6 @@ jobs:
           fail-on-severity: moderate
           # 結果のサマリを PR コメントへ投稿（失敗時のみ）
           comment-summary-in-pr: on-failure
+          # 送信直後はスナップショットの反映に遅延が出ることがあるためリトライする
+          retry-on-snapshot-warnings: true
+          retry-on-snapshot-warnings-timeout: 120
