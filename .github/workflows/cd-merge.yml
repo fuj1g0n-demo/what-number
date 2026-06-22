@@ -21,6 +21,7 @@ concurrency:
 permissions:
   id-token: write
   contents: read
+  packages: write
 
 env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -98,11 +99,28 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           ARTIFACT_VERSION="0.0.1-${SHORT_SHA}"
           echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
-          ./gradlew :app:publish -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
+          ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
           {
             echo "## Java 成果物の発行 (Azure Artifacts)"
             echo ""
             echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG} / project: ${AZURE_DEVOPS_PROJECT})"
+            echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish jar to GitHub Packages (Maven)
+        env:
+          GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          ARTIFACT_VERSION="0.0.1-${SHORT_SHA}"
+          echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to GitHub Packages (${GITHUB_PACKAGES_URL})"
+          ./gradlew :app:publishBootAppPublicationToGithubPackagesRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (GitHub Packages)"
+            echo ""
+            echo "- レジストリ: \`${GITHUB_PACKAGES_URL}\`"
             echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

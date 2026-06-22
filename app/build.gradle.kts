@@ -148,5 +148,17 @@ publishing {
                 password = providers.environmentVariable("AZURE_ARTIFACTS_PAT").orElse("").get()
             }
         }
+        // GitHub Packages (Maven レジストリ)
+        //   GITHUB_PACKAGES_URL : https://maven.pkg.github.com/<owner>/<repo>
+        //   GITHUB_ACTOR        : 実行ユーザー
+        //   GITHUB_TOKEN        : packages:write 権限を持つトークン
+        maven {
+            name = "githubPackages"
+            url = uri(providers.environmentVariable("GITHUB_PACKAGES_URL").orElse("").get())
+            credentials {
+                username = providers.environmentVariable("GITHUB_ACTOR").orElse("").get()
+                password = providers.environmentVariable("GITHUB_TOKEN").orElse("").get()
+            }
+        }
     }
 }

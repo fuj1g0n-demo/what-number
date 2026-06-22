@@ -97,7 +97,7 @@ PR ごとに専用のプレビュー環境を **2 種類の Azure ホスティ�
 |---|---|---|---|---|
 | `ci-pr-local.yml` | CI | PR (main): open / synchronize / reopen | なし（ローカル） | Build → Unit → Integration → System Test（ランナー内でローカル起動して検証） |
 | `ci-pr-remote.yml` | CI | PR (main): open / synchronize / reopen / close | PR 専用プレビュー環境（固有 URL） | PR ごとに **Container App**（コンテナ）と **App Service Web App**（Java SE 21 / bootJar）を並行作成 → 各固有 URL でデプロイ → E2E 実行 → URL を PR にコメント。クローズ時に両方を削除 |
-| `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts (Maven) へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ（リリース時に本番 prod へ展開する想定） |
+| `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts と GitHub Packages（Maven）へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ（リリース時に本番 prod へ展開する想定） |
 | `infra-bootstrap.yml` | セットアップ | 手動（`workflow_dispatch`） | － | 新規リソースグループ・ACR・マネージド ID・ACA 環境・App Service プランを作成（初回 1 回のみ） |
 | `ttl-cleanup.yml` | 運用 | 15 分毎 / 手動 | － | TTL 期限切れ（最終 push から 1 時間）のプレビュー環境（Container App / Web App）を削除 |
 
@@ -116,8 +116,10 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 `main` への push（PR マージ）または手動実行で、以下を行います（リリース時に本番 prod へ展開する想定）。
 
-- **Java 成果物の発行**: `bootJar` を Azure DevOps の Azure Artifacts（Maven フィード）へ
+- **Java 成果物の発行**: `bootJar` を 2 つの Maven レジストリへ
   `com.example:what-number:0.0.1-<short-sha>` として発行する。
+  - Azure DevOps の **Azure Artifacts**（project スコープフィード）
+  - **GitHub Packages**（`maven.pkg.github.com/<owner>/<repo>`、`GITHUB_TOKEN` で認証）
 - **ステージングへの並行デプロイ**:
   - Azure Container Apps: `<AZURE_CONTAINERAPP_NAME>-staging`
   - Azure App Service: `<APP_SERVICE_WEBAPP_PREFIX>-staging`（Java SE 21）
