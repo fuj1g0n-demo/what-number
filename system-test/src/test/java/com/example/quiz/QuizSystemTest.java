@@ -14,6 +14,7 @@ import org.junit.jupiter.api.TestInfo;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,11 +34,17 @@ class QuizSystemTest {
     private static final String CHOICE_BUTTON_SELECTOR = "form button[type='submit']";
     private static final String QUIZ_NUMBER_DISPLAY_SELECTOR = "h2.display-3";
     private static final String QUESTION_TEXT_SELECTOR = "p.lead";
+    private static final String QUIZ_NUMBER_LABEL_PREFIX = "数字: ";
     private static final String EXPECTED_QUESTION = "この数字、なんの数字？";
     private static final List<QuizListItemExpectation> EXPECTED_QUIZZES = List.of(
-            new QuizListItemExpectation("3,776", "/quiz/1"),
-            new QuizListItemExpectation("47", "/quiz/2"),
-            new QuizListItemExpectation("634", "/quiz/3")
+            new QuizListItemExpectation(1, "3,776", "/quiz/1"),
+            new QuizListItemExpectation(2, "47", "/quiz/2"),
+            new QuizListItemExpectation(3, "634", "/quiz/3")
+    );
+    private static final Map<Integer, QuizListItemExpectation> EXPECTED_QUIZZES_BY_ID = Map.of(
+            1, EXPECTED_QUIZZES.get(0),
+            2, EXPECTED_QUIZZES.get(1),
+            3, EXPECTED_QUIZZES.get(2)
     );
     private static final List<String> EXPECTED_CHOICES = List.of(
             "東京スカイツリーの高さ（メートル）",
@@ -45,12 +52,13 @@ class QuizSystemTest {
             "日本の島の数",
             "東京タワーの高さ（メートル）"
     );
+    private static final int TARGET_QUIZ_ID = 1;
 
     private static Playwright playwright;
     private static Browser browser;
     private Page page;
 
-    private record QuizListItemExpectation(String number, String path) {
+    private record QuizListItemExpectation(int id, String number, String path) {
     }
 
     @BeforeAll
@@ -101,7 +109,7 @@ class QuizSystemTest {
                 "クイズ一覧に3件のクイズが表示されること");
         for (int i = 0; i < EXPECTED_QUIZZES.size(); i++) {
             var expectedQuiz = EXPECTED_QUIZZES.get(i);
-            assertTrue(quizLinks.nth(i).textContent().contains("数字: " + expectedQuiz.number()),
+            assertTrue(quizLinks.nth(i).textContent().contains(QUIZ_NUMBER_LABEL_PREFIX + expectedQuiz.number()),
                     (i + 1) + "件目のクイズに数字が表示されること");
             assertTrue(quizLinks.nth(i).getAttribute("href").endsWith(expectedQuiz.path()),
                     (i + 1) + "件目のクイズから対応する出題画面に遷移できること");
@@ -110,13 +118,14 @@ class QuizSystemTest {
 
     @Test
     void quizPage_displaysQuestionAndChoices() {
-        page.navigate(BASE_URL + "/quiz/1");
+        var expectedQuiz = EXPECTED_QUIZZES_BY_ID.get(TARGET_QUIZ_ID);
+        page.navigate(BASE_URL + "/quiz/" + TARGET_QUIZ_ID);
         var choiceButtons = page.locator(CHOICE_BUTTON_SELECTOR);
 
-        assertTrue(page.title().contains("Q1 - " + EXPECTED_QUESTION),
+        assertTrue(page.title().contains("Q" + TARGET_QUIZ_ID + " - " + EXPECTED_QUESTION),
                 "出題画面のタイトルにクイズ番号とアプリ名が表示されること");
-        assertEquals(EXPECTED_QUIZZES.getFirst().number(), page.locator(QUIZ_NUMBER_DISPLAY_SELECTOR).textContent().trim(),
-                "出題画面に数字 " + EXPECTED_QUIZZES.getFirst().number() + " が表示されること");
+        assertEquals(expectedQuiz.number(), page.locator(QUIZ_NUMBER_DISPLAY_SELECTOR).textContent().trim(),
+                "出題画面に数字 " + expectedQuiz.number() + " が表示されること");
         assertEquals(EXPECTED_QUESTION, page.locator(QUESTION_TEXT_SELECTOR).textContent().trim(),
                 "出題画面に問題文が表示されること");
         assertEquals(EXPECTED_CHOICES.size(), choiceButtons.count(),
