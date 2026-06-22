@@ -31,6 +31,7 @@ env:
   IMAGE_REPO: quiz-app
   # Azure DevOps Artifacts
   AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
+  AZURE_DEVOPS_PROJECT: ${{ vars.AZURE_DEVOPS_PROJECT }}
   AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
 
 jobs:
@@ -73,10 +74,11 @@ jobs:
         run: |
           # フィードが無ければ作成する。既存(409)や権限不足(403)でも publish は
           # 既存フィードに対して動作するため、ここでは失敗で停止させない。
+          # プロジェクトスコープのフィードのため URL に project セグメントを含める。
           code=$(curl -s -o /tmp/feed.json -w '%{http_code}' \
             -u ":${AZURE_DEVOPS_PAT}" \
             -H "Content-Type: application/json" \
-            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/_apis/packaging/feeds?api-version=7.1-preview.1" \
+            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_apis/packaging/feeds?api-version=7.1-preview.1" \
             -d "{\"name\":\"${AZURE_ARTIFACTS_FEED}\"}" || echo "000")
           echo "feed ensure HTTP ${code}"
           case "$code" in
@@ -87,7 +89,7 @@ jobs:
 
       - name: Publish jar to Azure Artifacts (Maven)
         env:
-          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
+          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
           AZURE_ARTIFACTS_USER: AzureDevOps
           AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
@@ -98,7 +100,7 @@ jobs:
           {
             echo "## Java 成果物の発行 (Azure Artifacts)"
             echo ""
-            echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG})"
+            echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG} / project: ${AZURE_DEVOPS_PROJECT})"
             echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

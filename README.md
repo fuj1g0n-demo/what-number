@@ -150,7 +150,8 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 | `APP_SERVICE_PLAN` | App Service プラン名（Linux） | `asp-quiz-app-preview` |
 | `APP_SERVICE_WEBAPP_PREFIX` | App Service プレビュー／ステージング Web App 名の接頭辞（グローバルで一意） | `quiz-app-12345` |
 | `AZURE_DEVOPS_ORG` | Azure DevOps 組織名（Azure Artifacts 発行先） | `fuj1g0n-demo` |
-| `AZURE_ARTIFACTS_FEED` | Azure Artifacts のフィード名 | `what-number` |
+| `AZURE_DEVOPS_PROJECT` | Azure DevOps プロジェクト名（project スコープフィード） | `what-number` |
+| `AZURE_ARTIFACTS_FEED` | Azure Artifacts のフィード名（project スコープ） | `what-number` |
 
 > 任意（未設定時は既定値）の変数:
 >
