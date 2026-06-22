@@ -1,0 +1,31 @@
+name: Dependency Review
+
+# トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン）
+# 内容     : PR で追加・変更される依存関係を走査し、既知の脆弱性や
+#            ライセンス違反を検出して PR をゲートする。
+#            依存関係グラフは dependency-submission ワークフローが
+#            main で登録したものを基準に差分比較する。
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          # 中等度 (moderate) 以上の脆弱性が新規に持ち込まれた場合に失敗させる
+          fail-on-severity: moderate
+          # 結果のサマリを PR コメントへ投稿（失敗時のみ）
+          comment-summary-in-pr: on-failure
