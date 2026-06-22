@@ -195,8 +195,6 @@ jobs:
           chmod +x defender
 
       - name: Run Defender for Cloud CLI image scan (MDVM) -> SARIF
-        # 認証情報（Defender CSPM 用トークン）未設定でもパイプラインを止めないため継続
-        continue-on-error: true
         env:
           DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
           DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
@@ -205,11 +203,9 @@ jobs:
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif || true
+          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
 
       - name: Upload Defender CLI results to Security tab
-        # SARIF が生成できた場合のみ投入（認証未設定時はスキップ）
-        if: ${{ hashFiles('defender-mdvm.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: defender-mdvm.sarif
