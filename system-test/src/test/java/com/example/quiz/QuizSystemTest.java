@@ -31,9 +31,14 @@ class QuizSystemTest {
     private static final Path SCREENSHOT_DIR = Paths.get("build", "screenshots");
     private static final String QUIZ_LIST_ITEM_SELECTOR = "a.list-group-item";
     private static final String CHOICE_BUTTON_SELECTOR = "form button[type='submit']";
+    private static final String QUIZ_NUMBER_DISPLAY_SELECTOR = "h2.display-3";
+    private static final String QUESTION_TEXT_SELECTOR = "p.lead";
     private static final String EXPECTED_QUESTION = "この数字、なんの数字？";
-    private static final List<String> EXPECTED_QUIZ_NUMBERS = List.of("3,776", "47", "634");
-    private static final List<String> EXPECTED_QUIZ_PATHS = List.of("/quiz/1", "/quiz/2", "/quiz/3");
+    private static final List<QuizListItemExpectation> EXPECTED_QUIZZES = List.of(
+            new QuizListItemExpectation("3,776", "/quiz/1"),
+            new QuizListItemExpectation("47", "/quiz/2"),
+            new QuizListItemExpectation("634", "/quiz/3")
+    );
     private static final List<String> EXPECTED_CHOICES = List.of(
             "東京スカイツリーの高さ（メートル）",
             "富士山の標高（メートル）",
@@ -44,6 +49,9 @@ class QuizSystemTest {
     private static Playwright playwright;
     private static Browser browser;
     private Page page;
+
+    private record QuizListItemExpectation(String number, String path) {
+    }
 
     @BeforeAll
     static void setUp() {
@@ -89,12 +97,13 @@ class QuizSystemTest {
                 "トップページのタイトルに「この数字、なんの数字？」が含まれること");
         assertTrue(page.locator("h1").textContent().contains("クイズ一覧"),
                 "一覧画面にクイズ一覧見出しが表示されること");
-        assertEquals(EXPECTED_QUIZ_NUMBERS.size(), quizLinks.count(),
+        assertEquals(EXPECTED_QUIZZES.size(), quizLinks.count(),
                 "クイズ一覧に3件のクイズが表示されること");
-        for (int i = 0; i < EXPECTED_QUIZ_NUMBERS.size(); i++) {
-            assertTrue(quizLinks.nth(i).textContent().contains("数字: " + EXPECTED_QUIZ_NUMBERS.get(i)),
+        for (int i = 0; i < EXPECTED_QUIZZES.size(); i++) {
+            var expectedQuiz = EXPECTED_QUIZZES.get(i);
+            assertTrue(quizLinks.nth(i).textContent().contains("数字: " + expectedQuiz.number()),
                     (i + 1) + "件目のクイズに数字が表示されること");
-            assertTrue(quizLinks.nth(i).getAttribute("href").endsWith(EXPECTED_QUIZ_PATHS.get(i)),
+            assertTrue(quizLinks.nth(i).getAttribute("href").endsWith(expectedQuiz.path()),
                     (i + 1) + "件目のクイズから対応する出題画面に遷移できること");
         }
     }
@@ -106,9 +115,9 @@ class QuizSystemTest {
 
         assertTrue(page.title().contains("Q1 - " + EXPECTED_QUESTION),
                 "出題画面のタイトルにクイズ番号とアプリ名が表示されること");
-        assertEquals(EXPECTED_QUIZ_NUMBERS.getFirst(), page.locator("h2.display-3").textContent().trim(),
-                "出題画面に数字 3,776 が表示されること");
-        assertEquals(EXPECTED_QUESTION, page.locator("p.lead").textContent().trim(),
+        assertEquals(EXPECTED_QUIZZES.getFirst().number(), page.locator(QUIZ_NUMBER_DISPLAY_SELECTOR).textContent().trim(),
+                "出題画面に数字 " + EXPECTED_QUIZZES.getFirst().number() + " が表示されること");
+        assertEquals(EXPECTED_QUESTION, page.locator(QUESTION_TEXT_SELECTOR).textContent().trim(),
                 "出題画面に問題文が表示されること");
         assertEquals(EXPECTED_CHOICES.size(), choiceButtons.count(),
                 "出題画面に4つの選択肢ボタンが表示されること");
