@@ -219,6 +219,76 @@ jobs:
           echo "E2E tests failed against the preview environment."
           exit 1
 
+  # ---------------------------------------------------------------------------
+  # image-security-scan: ACR へ publish 済みのプレビューイメージ／ソースに対して
+  #   2 系統のセキュリティスキャンを実行し、結果を GitHub code scanning へ投入する。
+  #     系統1: Microsoft Security DevOps (Trivy / Checkov / Template Analyzer)
+  #     系統2: Defender for Cloud CLI (MDVM) による ACR イメージスキャン
+  #   PR 上での結果は Files changed の差分行に注釈表示される（PR アノテーション）。
+  #   E2E 失敗でもスキャンは実施したいため !cancelled() で起動する。
+  # ---------------------------------------------------------------------------
+  image-security-scan:
+    if: ${{ !cancelled() && github.event.action != 'closed' }}
+    needs: deploy-preview-aca
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write         # Azure Login / ACR pull (OIDC) 用
+      security-events: write  # code scanning への SARIF 投入に必須（GHAS 前提）
+    env:
+      PR_NUM: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # --- 系統1: MSDO (Trivy 他) -> SARIF -> code scanning ---
+      - name: Run Microsoft Security DevOps (Trivy / Checkov / Template Analyzer)
+        uses: microsoft/security-devops-action@latest
+        id: msdo
+        with:
+          # 本リポジトリに対象のあるツールのみ明示指定（空ツールの build break を回避）
+          tools: checkov,templateanalyzer,trivy
+
+      - name: Upload MSDO results to Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
+          category: msdo
+
+      # --- 系統2: Defender for Cloud CLI (MDVM) で ACR イメージをスキャン -> SARIF ---
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Defender for Cloud CLI
+        run: |
+          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+          chmod +x defender
+
+      - name: Run Defender for Cloud CLI image scan (MDVM) -> SARIF
+        # 認証情報（Defender CSPM 用トークン）未設定でもパイプラインを止めないため継続
+        continue-on-error: true
+        env:
+          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
+          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
+          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CLIENT_SECRET }}
+        run: |
+          az acr login --name "$ACR_NAME"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
+          echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
+          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif || true
+
+      - name: Upload Defender CLI results to Security tab
+        # SARIF が生成できた場合のみ投入（認証未設定時はスキップ）
+        if: ${{ hashFiles('defender-mdvm.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: defender-mdvm.sarif
+          category: defender-mdvm
+
   deploy-preview-appservice:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
