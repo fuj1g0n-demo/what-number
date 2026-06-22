@@ -14,6 +14,7 @@ import org.junit.jupiter.api.TestInfo;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -70,8 +71,48 @@ class QuizSystemTest {
     @Test
     void topPage_displaysQuizList() {
         page.navigate(BASE_URL);
-        String title = page.title();
-        assertTrue(title.contains("この数字、なんの数字？"),
+        var quizLinks = page.locator("a.list-group-item");
+
+        assertTrue(page.title().contains("この数字、なんの数字？"),
                 "トップページのタイトルに「この数字、なんの数字？」が含まれること");
+        assertTrue(page.locator("h1").textContent().contains("クイズ一覧"),
+                "一覧画面にクイズ一覧見出しが表示されること");
+        assertEquals(3, quizLinks.count(),
+                "クイズ一覧に3件のクイズが表示されること");
+        assertTrue(quizLinks.nth(0).textContent().contains("数字: 3,776"),
+                "1件目のクイズに数字 3,776 が表示されること");
+        assertTrue(quizLinks.nth(0).getAttribute("href").endsWith("/quiz/1"),
+                "1件目のクイズから /quiz/1 に遷移できること");
+        assertTrue(quizLinks.nth(1).textContent().contains("数字: 47"),
+                "2件目のクイズに数字 47 が表示されること");
+        assertTrue(quizLinks.nth(1).getAttribute("href").endsWith("/quiz/2"),
+                "2件目のクイズから /quiz/2 に遷移できること");
+        assertTrue(quizLinks.nth(2).textContent().contains("数字: 634"),
+                "3件目のクイズに数字 634 が表示されること");
+        assertTrue(quizLinks.nth(2).getAttribute("href").endsWith("/quiz/3"),
+                "3件目のクイズから /quiz/3 に遷移できること");
+    }
+
+    @Test
+    void quizPage_displaysQuestionAndChoices() {
+        page.navigate(BASE_URL + "/quiz/1");
+        var choiceButtons = page.locator("form button[type='submit']");
+
+        assertTrue(page.title().contains("Q1 - この数字、なんの数字？"),
+                "出題画面のタイトルにクイズ番号とアプリ名が表示されること");
+        assertEquals("3,776", page.locator("h2.display-3").textContent().trim(),
+                "出題画面に数字 3,776 が表示されること");
+        assertEquals("この数字、なんの数字？", page.locator("p.lead").textContent().trim(),
+                "出題画面に問題文が表示されること");
+        assertEquals(4, choiceButtons.count(),
+                "出題画面に4つの選択肢ボタンが表示されること");
+        assertEquals("東京スカイツリーの高さ（メートル）", choiceButtons.nth(0).textContent().trim(),
+                "1つ目の選択肢が表示されること");
+        assertEquals("富士山の標高（メートル）", choiceButtons.nth(1).textContent().trim(),
+                "2つ目の選択肢が表示されること");
+        assertEquals("日本の島の数", choiceButtons.nth(2).textContent().trim(),
+                "3つ目の選択肢が表示されること");
+        assertEquals("東京タワーの高さ（メートル）", choiceButtons.nth(3).textContent().trim(),
+                "4つ目の選択肢が表示されること");
     }
 }
