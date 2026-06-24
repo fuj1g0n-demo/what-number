@@ -36,11 +36,12 @@ WORKDIR /app
 # コンテナイメージスキャンの検出デモ用に、既知の脆弱性を多数含む「古いバージョン」の
 # システムツール（curl / wget / git）とその依存ライブラリを意図的に導入する。
 #
-# 仕組み: Ubuntu 公式のスナップショットアーカイブ（2022-06-01 時点の jammy）から
-#         GA 当時の未パッチな .deb を直接ダウンロードし、dpkg で登録する。
-#         apt の依存解決は使わない（最新ベースの新しいライブラリと古いパッケージの
-#         依存バージョンが衝突して "held broken packages" になるのを避けるため）。
-#         dpkg --force-all で依存不一致を無視して登録するだけ（実行はしない）。
+# 仕組み: Ubuntu 公式のスナップショットアーカイブ（2022-06-01 時点の jammy）の pool から
+#         GA 当時の未パッチな .deb を URL 直接指定でダウンロードし、dpkg で登録する。
+#         apt の候補解決・依存解決は使わない（最新ベースの新しいライブラリと古いパッケージで
+#         依存バージョンが衝突して "held broken packages" になる／パッチ版が候補に選ばれて
+#         "Can't find a source" になるのを避けるため）。dpkg --force-all で依存不一致を無視して
+#         登録するだけ（実行はしない。スキャンは dpkg データベースを読むため検出される）。
 #         例) curl 7.81.0-1 / libcurl4 7.81.0-1 / git 2.34.1 / wget 1.21.2 など多数の CVE を含む。
 #
 # 注意: これはアプリ（Java）レイヤーではなく OS パッケージ層の脆弱性を再現している。
@@ -48,16 +49,19 @@ WORKDIR /app
 #       併せて必ず削除すること。
 # ---------------------------------------------------------------------------
 RUN set -eux; \
-    # snapshot.ubuntu.com は https にリダイレクトするため TLS 検証用 ca-certificates を先に確保
+    # ダウンローダ(wget)と TLS 検証用 ca-certificates を現行リポジトリから確保（snapshot は https にリダイレクト）
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates; \
-    # apt ソースを 2022 年時点の Ubuntu スナップショットに固定（古い脆弱なパッケージを参照）
-    printf 'deb [trusted=yes check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z jammy main universe\n' > /etc/apt/sources.list; \
-    rm -f /etc/apt/sources.list.d/*; \
-    apt-get update; \
-    # 依存解決を行わず、対象パッケージの古い .deb のみを取得して dpkg で登録する
+    apt-get install -y --no-install-recommends ca-certificates wget; \
+    # 2022-06-01 スナップショットの pool から古い .deb を URL 直接ダウンロード
+    SNAP="http://snapshot.ubuntu.com/ubuntu/20220601T000000Z"; \
     mkdir -p /tmp/vulndebs; cd /tmp/vulndebs; \
-    apt-get -o APT::Sandbox::User=root download curl libcurl4 git git-man wget; \
+    wget --tries=3 --timeout=30 -q \
+      "$SNAP/pool/main/c/curl/curl_7.81.0-1_amd64.deb" \
+      "$SNAP/pool/main/c/curl/libcurl4_7.81.0-1_amd64.deb" \
+      "$SNAP/pool/main/g/git/git_2.34.1-1ubuntu1_amd64.deb" \
+      "$SNAP/pool/main/g/git/git-man_2.34.1-1ubuntu1_all.deb" \
+      "$SNAP/pool/main/w/wget/wget_1.21.2-2ubuntu1_amd64.deb"; \
+    # 依存解決を行わず dpkg で登録する（実行はしないがスキャンに検出される）
     dpkg -i --force-all ./*.deb || true; \
     cd /; rm -rf /tmp/vulndebs /var/lib/apt/lists/*
 # ===========================================================================
