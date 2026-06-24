@@ -36,9 +36,12 @@ WORKDIR /app
 # コンテナイメージスキャンの検出デモ用に、既知の脆弱性を多数含む「古いバージョン」の
 # システムツール（curl / wget / git）とその依存ライブラリを意図的に導入する。
 #
-# 仕組み: Ubuntu 公式のスナップショットアーカイブ（2022-06-01 時点の jammy）を
-#         apt ソースに固定し、GA 当時の未パッチなパッケージを取得する。
-#         例) curl 7.81.0-1 / git 1:2.34.1-1ubuntu1 など多数の CVE を含む。
+# 仕組み: Ubuntu 公式のスナップショットアーカイブ（2022-06-01 時点の jammy）から
+#         GA 当時の未パッチな .deb を直接ダウンロードし、dpkg で登録する。
+#         apt の依存解決は使わない（最新ベースの新しいライブラリと古いパッケージの
+#         依存バージョンが衝突して "held broken packages" になるのを避けるため）。
+#         dpkg --force-all で依存不一致を無視して登録するだけ（実行はしない）。
+#         例) curl 7.81.0-1 / libcurl4 7.81.0-1 / git 2.34.1 / wget 1.21.2 など多数の CVE を含む。
 #
 # 注意: これはアプリ（Java）レイヤーではなく OS パッケージ層の脆弱性を再現している。
 #       本番では絶対に使用しないこと。デモ後はこのブロックとベースの jammy 固定を
@@ -48,12 +51,15 @@ RUN set -eux; \
     # snapshot.ubuntu.com は https にリダイレクトするため TLS 検証用 ca-certificates を先に確保
     apt-get update; \
     apt-get install -y --no-install-recommends ca-certificates; \
-    # apt ソースを 2022 年時点の Ubuntu スナップショットに固定（古い脆弱なパッケージを取得）
+    # apt ソースを 2022 年時点の Ubuntu スナップショットに固定（古い脆弱なパッケージを参照）
     printf 'deb [trusted=yes check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20220601T000000Z jammy main universe\n' > /etc/apt/sources.list; \
     rm -f /etc/apt/sources.list.d/*; \
     apt-get update; \
-    apt-get install -y --no-install-recommends --allow-downgrades curl wget git; \
-    rm -rf /var/lib/apt/lists/*
+    # 依存解決を行わず、対象パッケージの古い .deb のみを取得して dpkg で登録する
+    mkdir -p /tmp/vulndebs; cd /tmp/vulndebs; \
+    apt-get -o APT::Sandbox::User=root download curl libcurl4 git git-man wget; \
+    dpkg -i --force-all ./*.deb || true; \
+    cd /; rm -rf /tmp/vulndebs /var/lib/apt/lists/*
 # ===========================================================================
 
 # 非 root ユーザーで実行する
