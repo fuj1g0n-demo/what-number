@@ -168,21 +168,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- 系統1: MSDO (Trivy) -> SARIF -> code scanning ---
-      - name: Run Microsoft Security DevOps (Trivy)
-        uses: microsoft/security-devops-action@latest
-        id: msdo
-        with:
-          # Trivy のみ実行（依存関係／ファイルシステムの脆弱性スキャン）
-          tools: trivy
-
-      - name: Upload MSDO results to Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: ${{ steps.msdo.outputs.sarifFile }}
-          category: msdo
-
-      # --- 系統2: Defender for Cloud CLI (MDVM) で ACR イメージをスキャン -> SARIF ---
+      # --- Defender for Cloud CLI (MDVM) で ACR イメージをスキャン -> SARIF ---
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -195,7 +181,7 @@ jobs:
           curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
           chmod +x defender
 
-      - name: Run Defender for Cloud CLI image scan (MDVM) -> SARIF
+      - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
         env:
           DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
           DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
@@ -205,6 +191,15 @@ jobs:
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
           ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
+          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+
+      # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
+      # Dockerfile の該当行へ remap し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
+      - name: Remap MDVM SARIF locations to Dockerfile
+        run: |
+          python3 .github/scripts/remap_mdvm_sarif_to_dockerfile.py \
+            defender-mdvm.sarif sbom.json Dockerfile
 
       - name: Upload Defender CLI results to Security tab
         uses: github/codeql-action/upload-sarif@v4
