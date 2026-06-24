@@ -31,6 +31,19 @@ RUN ./gradlew --no-daemon :app:bootJar \
 FROM eclipse-temurin:21-jre-jammy AS runtime
 WORKDIR /app
 
+# ===== [CODE-TO-CLOUD MAPPING 検証] OCI ラベル埋め込み =======================
+# 検証目的: イメージ manifest に OCI annotations / Docker LABEL を埋め込んだ場合、
+#           Defender for Cloud CLI が出力する SARIF がこの情報を拾い出すか
+#           （code-to-cloud のソース情報を SARIF へ反映できるか）を実証する。
+#           固有プローブ値 sarif-label-probe-20260624 を SARIF 内で検索して判定する。
+LABEL org.opencontainers.image.source="https://github.com/fuj1g0n-demo-01/what-number" \
+      org.opencontainers.image.revision="demo-security-vuln-xss-and-vulnerable-dep" \
+      org.opencontainers.image.url="https://github.com/fuj1g0n-demo-01/what-number" \
+      org.opencontainers.image.title="what-number" \
+      com.microsoft.defender.dockerfile.path="Dockerfile" \
+      com.example.codetocloud.test="sarif-label-probe-20260624"
+# ===========================================================================
+
 # ===== [SECURITY DEMO ONLY — 意図的に脆弱] ==================================
 # Microsoft Defender Vulnerability Management (MDVM) / Defender for Cloud による
 # コンテナイメージスキャンの検出デモ用に、既知の脆弱性を多数含む「古いバージョン」の
