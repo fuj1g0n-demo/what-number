@@ -5,8 +5,10 @@ name: CD (Merge) - Staging Deploy
 #   - Azure Container Apps (staging)
 #   - Azure App Service   (staging)
 # 成果物   : 本プロジェクトの Java 成果物 (bootJar) を Azure DevOps の
-#            Azure Artifacts (Maven フィード) へ発行する
-# 構成     : build-and-publish -> (deploy-aca / deploy-appservice を並列実行)
+#            Azure Artifacts / GitHub Packages (Maven フィード) へ発行する
+# 構成 (job DAG):
+#   build-jar  ───────────────────────────────→ deploy-appservice
+#   build-image ─→ image-security-scan ─→ deploy-aca
 
 on:
   push:
@@ -38,11 +40,11 @@ env:
   AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # ビルド & 成果物発行: bootJar をビルドし、ACR へイメージを push、
-  #                      Java 成果物を Azure Artifacts (Maven) へ発行する
-  # ---------------------------------------------------------------------------
-  build-and-publish:
+  # ===========================================================================
+  # build-jar: bootJar をビルド -> Maven フィード（Azure Artifacts / GitHub Packages）へ発行
+  #            + deploy-appservice 用に jar を artifact アップロード
+  # ===========================================================================
+  build-jar:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -60,8 +62,7 @@ jobs:
       - name: Build bootJar
         run: |
           ./gradlew :app:bootJar
-          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
-          echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
+          JAR=$(find app/build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n1)
           echo "Built jar: $JAR"
 
       - name: Upload bootJar artifact
@@ -129,6 +130,15 @@ jobs:
             echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ===========================================================================
+  # build-image: Dockerfile から ACR イメージをビルドし ACR へ push（build=publish）
+  # ===========================================================================
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -146,18 +156,12 @@ jobs:
             --file Dockerfile \
             .
 
-  # ---------------------------------------------------------------------------
-  # image-security-scan: ACR へ publish 済みのイメージ／ソースに対して
-  #   2 系統のセキュリティスキャンを実行し、結果を GitHub code scanning へ投入する。
-  #     系統1: Microsoft Security DevOps (Trivy)
-  #            → リポジトリ／依存関係を SARIF 化して投入
-  #     系統2: Defender for Cloud CLI (MDVM) による ACR イメージスキャン
-  #            → コンテナイメージを SARIF 化して投入（結果は Defender for Cloud にも集約）
-  #   deploy ジョブとは独立（needs: build-and-publish のみ）。スキャン失敗が
-  #   デプロイをブロックしないよう別ジョブに分離している。
-  # ---------------------------------------------------------------------------
+  # ===========================================================================
+  # image-security-scan: ACR へ publish 済みイメージを MDVM でスキャン -> Dockerfile 行へ remap -> SARIF 投入
+  #   （ACA デプロイのゲート。high/critical は code scanning の check 失敗として可視化）
+  # ===========================================================================
   image-security-scan:
-    needs: build-and-publish
+    needs: build-image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -168,7 +172,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # --- Defender for Cloud CLI (MDVM) で ACR イメージをスキャン -> SARIF ---
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
@@ -207,11 +210,11 @@ jobs:
           sarif_file: defender-mdvm.sarif
           category: defender-mdvm
 
-  # ---------------------------------------------------------------------------
-  # deploy-aca: ステージング用 Azure Container App へデプロイ
-  # ---------------------------------------------------------------------------
+  # ===========================================================================
+  # deploy-aca: スキャン済みイメージをステージング用 Azure Container App へデプロイ
+  # ===========================================================================
   deploy-aca:
-    needs: build-and-publish
+    needs: image-security-scan
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -287,11 +290,11 @@ jobs:
             echo "**URL:** ${{ steps.deploy.outputs.url }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ---------------------------------------------------------------------------
-  # deploy-appservice: ステージング用 Azure App Service へデプロイ
-  # ---------------------------------------------------------------------------
+  # ===========================================================================
+  # deploy-appservice: publish 済み bootJar をステージング用 Azure App Service へデプロイ
+  # ===========================================================================
   deploy-appservice:
-    needs: build-and-publish
+    needs: build-jar
     runs-on: ubuntu-latest
     environment:
       name: staging
@@ -307,7 +310,7 @@ jobs:
 
       - name: Resolve jar path
         run: |
-          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
+          JAR=$(find app/build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n1)
           echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
           echo "Jar to deploy: $JAR"
 
