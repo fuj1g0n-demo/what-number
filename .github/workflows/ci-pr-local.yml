@@ -1,8 +1,11 @@
 name: CI (PR) - Local Tests
 
-# トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン）
+# トリガー : main 宛ての Pull Request（作成 / 再オープン / 更新）
 # デプロイ先: なし（CI ランナー内でアプリを起動し、ローカルで検証するのみ）
-# 内容     : Build -> Unit Test -> Integration Test -> System Test（ローカル起動）
+# 構成 (job DAG):
+#   build ─→ unit-test
+#         ─→ integration-test
+#         ─→ system-test（CI ランナー内でアプリを起動）
 
 on:
   pull_request:
@@ -17,9 +20,11 @@ permissions:
   contents: read
 
 jobs:
+  # ===========================================================================
+  # build: アプリをコンパイル/アセンブルし、ビルドの健全性を先に確認する
+  # ===========================================================================
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,14 +38,71 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build
-        run: ./gradlew :app:build
+      - name: Build (assemble, テストは実行しない)
+        run: ./gradlew :app:assemble
+
+  # ===========================================================================
+  # unit-test: 個々のクラス・メソッド単位の単体テスト
+  # ===========================================================================
+  unit-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Unit Test
         run: ./gradlew :app:test
 
+  # ===========================================================================
+  # integration-test: 複数コンポーネント間の結合テスト
+  # ===========================================================================
+  integration-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Integration Test
         run: ./gradlew :app:integrationTest
+
+  # ===========================================================================
+  # system-test: CI ランナー内でアプリを起動し、E2E（System Test）を実行
+  # ===========================================================================
+  system-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Install Playwright browsers
         run: ./gradlew :system-test:testClasses && npx playwright install --with-deps chromium
