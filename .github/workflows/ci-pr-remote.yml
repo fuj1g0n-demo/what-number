@@ -1,11 +1,16 @@
 name: CI (PR) - Remote Preview Deploy & E2E
 
 # トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン / クローズ）
-# デプロイ先: PR 専用のプレビュー環境（PR ごとに固有の URL）を 2 種類の Azure ホスティングへ並行 deploy
-#            - Azure Container Apps（コンテナ: ACR イメージ）
-#            - Azure App Service（Java SE 21: bootJar）
-# 内容     : 各ホスティングへ deploy -> 固有 URL に対し E2E 実行 -> URL を PR にコメント。
-#            PR クローズ時は両方のプレビュー環境を削除。
+# パイプライン構成（job DAG）:
+#   build-jar  ──────────────────────────────→ deploy-preview-appservice ─→ e2e-appservice
+#   build-image ─→ image-security-scan ─→ deploy-preview-aca        ─→ e2e-aca
+#   （PR クローズ時は cleanup-preview が両プレビュー環境を削除）
+#
+# - build-jar  : bootJar をビルドし Maven フィード（Azure Artifacts / GitHub Packages）へ publish
+# - build-image: Dockerfile から ACR イメージをビルドして ACR へ push（build=publish）
+# - image-security-scan: 公開済みイメージを MDVM でスキャンし Dockerfile 行へ remap（ACA デプロイのゲート）
+# - deploy-*   : スキャン済みイメージ / publish 済み jar をプレビュー環境へデプロイ
+# - e2e-*      : 各プレビュー URL に対し E2E（System Test）を実行
 
 on:
   pull_request:
@@ -21,6 +26,7 @@ permissions:
   id-token: write
   contents: read
   pull-requests: write
+  packages: write          # GitHub Packages への jar publish 用
 
 env:
   RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
@@ -30,16 +36,104 @@ env:
   APP_SERVICE_PLAN: ${{ vars.APP_SERVICE_PLAN }}
   APP_SERVICE_WEBAPP_PREFIX: ${{ vars.APP_SERVICE_WEBAPP_PREFIX }}
   IMAGE_REPO: quiz-app
+  AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
+  AZURE_DEVOPS_PROJECT: ${{ vars.AZURE_DEVOPS_PROJECT }}
+  AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
 
 jobs:
-  deploy-preview-aca:
+  # ===========================================================================
+  # build-jar: bootJar をビルド -> Maven フィードへ publish + デプロイ用に artifact 化
+  # ===========================================================================
+  build-jar:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
-
     env:
-      APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}-pr-${{ github.event.pull_request.number }}
       PR_NUM: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build bootJar
+        run: |
+          ./gradlew :app:bootJar
+          JAR=$(find app/build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n1)
+          echo "Built jar: $JAR"
+
+      - name: Upload bootJar artifact (deploy-preview-appservice 用)
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-bootjar-pr-${{ env.PR_NUM }}
+          path: app/build/libs/*.jar
+          if-no-files-found: error
+
+      - name: Ensure Azure Artifacts feed exists (best-effort)
+        env:
+          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          # フィードが無ければ作成する。既存(409)や権限不足(403)でも publish は
+          # 既存フィードに対して動作するため、ここでは失敗で停止させない。
+          code=$(curl -s -o /tmp/feed.json -w '%{http_code}' \
+            -u ":${AZURE_DEVOPS_PAT}" \
+            -H "Content-Type: application/json" \
+            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_apis/packaging/feeds?api-version=7.1-preview.1" \
+            -d "{\"name\":\"${AZURE_ARTIFACTS_FEED}\"}" || echo "000")
+          echo "feed ensure HTTP ${code}"
+
+      - name: Publish jar to Azure Artifacts (Maven)
+        env:
+          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
+          AZURE_ARTIFACTS_USER: AzureDevOps
+          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          # バージョンは gradle.properties を単一正本とし、-SNAPSHOT を外した基底に
+          # pr 番号 + short-sha を付与してプレビュー成果物を一意化する。
+          BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
+          ARTIFACT_VERSION="${BASE_VERSION}-pr${PR_NUM}-${SHORT_SHA}"
+          echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
+          ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (Azure Artifacts)"
+            echo ""
+            echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG} / project: ${AZURE_DEVOPS_PROJECT})"
+            echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish jar to GitHub Packages (Maven)
+        env:
+          GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
+          ARTIFACT_VERSION="${BASE_VERSION}-pr${PR_NUM}-${SHORT_SHA}"
+          echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to GitHub Packages (${GITHUB_PACKAGES_URL})"
+          ./gradlew :app:publishBootAppPublicationToGithubPackagesRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
+          {
+            echo "## Java 成果物の発行 (GitHub Packages)"
+            echo ""
+            echo "- レジストリ: \`${GITHUB_PACKAGES_URL}\`"
+            echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ===========================================================================
+  # build-image: Dockerfile から ACR イメージをビルドし ACR へ push（build=publish）
+  # ===========================================================================
+  build-image:
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    env:
+      PR_NUM: ${{ github.event.pull_request.number }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,9 +154,87 @@ jobs:
             --file Dockerfile \
             .
 
+  # ===========================================================================
+  # image-security-scan: 公開済みイメージを MDVM でスキャン -> Dockerfile 行へ remap -> SARIF 投入
+  #   （ACA デプロイのゲート。high/critical は code scanning の check 失敗として可視化）
+  # ===========================================================================
+  image-security-scan:
+    if: github.event.action != 'closed'
+    needs: build-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write         # Azure Login / ACR pull (OIDC) 用
+      actions: read           # private リポジトリで upload-sarif が run 情報取得に必要
+      security-events: write  # code scanning への SARIF 投入に必須（GHAS 前提）
+    env:
+      PR_NUM: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Download Defender for Cloud CLI
+        run: |
+          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+          chmod +x defender
+
+      - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
+        env:
+          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
+          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
+          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CLIENT_SECRET }}
+        run: |
+          az acr login --name "$ACR_NAME"
+          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
+          echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
+          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
+          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+
+      # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
+      # Dockerfile の該当行へ remap し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
+      - name: Remap MDVM SARIF locations to Dockerfile
+        run: |
+          python3 .github/scripts/remap_mdvm_sarif_to_dockerfile.py \
+            defender-mdvm.sarif sbom.json Dockerfile
+
+      - name: Upload Defender CLI results to Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: defender-mdvm.sarif
+          category: defender-mdvm
+
+  # ===========================================================================
+  # deploy-preview-aca: スキャン済みイメージを Azure Container Apps へデプロイ
+  # ===========================================================================
+  deploy-preview-aca:
+    if: github.event.action != 'closed'
+    needs: image-security-scan
+    runs-on: ubuntu-latest
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      APP_NAME: ${{ vars.AZURE_CONTAINERAPP_NAME }}-pr-${{ github.event.pull_request.number }}
+      PR_NUM: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Deploy preview container app
         id: deploy
         run: |
+          az extension add --name containerapp --upgrade --only-show-errors
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
           UAMI_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query id -o tsv)
           # 最後の push から 1 時間後を TTL とする（TTL Cleanup ワークフローが削除）
@@ -121,193 +293,30 @@ jobs:
           echo "Preview did not become ready in time."
           exit 1
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Install Playwright browsers
-        run: ./gradlew :system-test:testClasses && npx playwright install --with-deps chromium
-
-      - name: Run E2E (System Test) against preview
-        id: e2e
-        continue-on-error: true
-        run: ./gradlew :system-test:test -Dtest.base-url="${{ steps.deploy.outputs.url }}"
-
-      - name: Upload E2E screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-screenshots-pr-${{ env.PR_NUM }}
-          path: system-test/build/screenshots/
-          if-no-files-found: ignore
-
-      - name: Upload E2E report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: e2e-report-pr-${{ env.PR_NUM }}
-          path: system-test/build/reports/tests/test/
-          if-no-files-found: ignore
-
-      - name: Comment PR with preview URL and E2E result
-        if: always()
-        uses: actions/github-script@v7
-        env:
-          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
-          E2E_OUTCOME: ${{ steps.e2e.outcome }}
-        with:
-          script: |
-            const prNum = context.payload.pull_request.number;
-            const url = process.env.PREVIEW_URL;
-            const e2e = process.env.E2E_OUTCOME;
-            const e2eLine = e2e === 'success'
-              ? '**E2E (System Test):** ✅ Passed'
-              : '**E2E (System Test):** ❌ Failed — Actions のログとアーティファクトを確認してください';
-            const body = [
-              '## 🔍 Preview Environment (Azure Container Apps)',
-              '',
-              `**URL:** ${url}`,
-              '',
-              e2eLine,
-              '',
-              '> このプレビュー環境は最後の push から 1 時間後、または PR クローズ時に自動削除されます。',
-            ].join('\n');
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: prNum,
-            });
-            const existing = comments.find(c =>
-              c.user.type === 'Bot' && c.body.includes('Preview Environment (Azure Container Apps)'));
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNum,
-                body,
-              });
-            }
-
-      - name: Show preview summary
-        if: always()
-        run: |
-          {
-            echo "## Preview Deployed"
-            echo ""
-            echo "**URL:** ${{ steps.deploy.outputs.url }}"
-            echo ""
-            echo "**E2E result:** ${{ steps.e2e.outcome }}"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Fail job if E2E failed
-        if: steps.e2e.outcome == 'failure'
-        run: |
-          echo "E2E tests failed against the preview environment."
-          exit 1
-
-  # ---------------------------------------------------------------------------
-  # image-security-scan: ACR へ publish 済みのプレビューイメージ／ソースに対して
-  #   2 系統のセキュリティスキャンを実行し、結果を GitHub code scanning へ投入する。
-  #     系統1: Microsoft Security DevOps (Trivy)
-  #     系統2: Defender for Cloud CLI (MDVM) による ACR イメージスキャン
-  #   PR 上での結果は Files changed の差分行に注釈表示される（PR アノテーション）。
-  #   E2E 失敗でもスキャンは実施したいため !cancelled() で起動する。
-  # ---------------------------------------------------------------------------
-  image-security-scan:
-    if: ${{ !cancelled() && github.event.action != 'closed' }}
-    needs: deploy-preview-aca
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write         # Azure Login / ACR pull (OIDC) 用
-      actions: read           # private リポジトリで upload-sarif が run 情報取得に必要
-      security-events: write  # code scanning への SARIF 投入に必須（GHAS 前提）
-    env:
-      PR_NUM: ${{ github.event.pull_request.number }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # --- Defender for Cloud CLI (MDVM) で ACR イメージをスキャン -> SARIF ---
-      - name: Azure Login (OIDC)
-        uses: azure/login@v2
-        with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Download Defender for Cloud CLI
-        run: |
-          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
-          chmod +x defender
-
-      - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
-        env:
-          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
-          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
-          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CLIENT_SECRET }}
-        run: |
-          az acr login --name "$ACR_NAME"
-          IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
-          echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
-          # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
-          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
-
-      # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
-      # Dockerfile の該当行へ remap し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
-      - name: Remap MDVM SARIF locations to Dockerfile
-        run: |
-          python3 .github/scripts/remap_mdvm_sarif_to_dockerfile.py \
-            defender-mdvm.sarif sbom.json Dockerfile
-
-      - name: Upload Defender CLI results to Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: defender-mdvm.sarif
-          category: defender-mdvm
-
+  # ===========================================================================
+  # deploy-preview-appservice: publish 済み bootJar を Azure App Service へデプロイ
+  # ===========================================================================
   deploy-preview-appservice:
     if: github.event.action != 'closed'
+    needs: build-jar
     runs-on: ubuntu-latest
-
+    outputs:
+      url: ${{ steps.deploy.outputs.url }}
     env:
       WEBAPP_NAME: ${{ vars.APP_SERVICE_WEBAPP_PREFIX }}-pr-${{ github.event.pull_request.number }}
       PR_NUM: ${{ github.event.pull_request.number }}
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - name: Download bootJar artifact
+        uses: actions/download-artifact@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
+          name: preview-bootjar-pr-${{ env.PR_NUM }}
+          path: app/build/libs
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Build bootJar
+      - name: Resolve jar path
         run: |
-          ./gradlew :app:bootJar
-          JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
+          JAR=$(find app/build/libs -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' | head -n1)
           echo "JAR_PATH=$JAR" >> "$GITHUB_ENV"
-          echo "Built jar: $JAR"
+          echo "Jar to deploy: $JAR"
 
       - name: Azure Login (OIDC)
         uses: azure/login@v2
@@ -396,13 +405,148 @@ jobs:
           echo "Preview did not become ready in time."
           exit 1
 
+  # ===========================================================================
+  # e2e-aca: ACA プレビュー URL に対し E2E（System Test）を実行
+  # ===========================================================================
+  e2e-aca:
+    if: github.event.action != 'closed'
+    needs: deploy-preview-aca
+    runs-on: ubuntu-latest
+    env:
+      PR_NUM: ${{ github.event.pull_request.number }}
+      PREVIEW_URL: ${{ needs.deploy-preview-aca.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Install Playwright browsers
         run: ./gradlew :system-test:testClasses && npx playwright install --with-deps chromium
 
       - name: Run E2E (System Test) against preview
         id: e2e
         continue-on-error: true
-        run: ./gradlew :system-test:test -Dtest.base-url="${{ steps.deploy.outputs.url }}"
+        run: ./gradlew :system-test:test -Dtest.base-url="$PREVIEW_URL"
+
+      - name: Upload E2E screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots-aca-pr-${{ env.PR_NUM }}
+          path: system-test/build/screenshots/
+          if-no-files-found: ignore
+
+      - name: Upload E2E report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report-aca-pr-${{ env.PR_NUM }}
+          path: system-test/build/reports/tests/test/
+          if-no-files-found: ignore
+
+      - name: Comment PR with preview URL and E2E result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          E2E_OUTCOME: ${{ steps.e2e.outcome }}
+        with:
+          script: |
+            const prNum = context.payload.pull_request.number;
+            const url = process.env.PREVIEW_URL;
+            const e2e = process.env.E2E_OUTCOME;
+            const e2eLine = e2e === 'success'
+              ? '**E2E (System Test):** ✅ Passed'
+              : '**E2E (System Test):** ❌ Failed — Actions のログとアーティファクトを確認してください';
+            const marker = 'Preview Environment (Azure Container Apps)';
+            const body = [
+              `## 🔍 ${marker}`,
+              '',
+              `**URL:** ${url}`,
+              '',
+              e2eLine,
+              '',
+              '> このプレビュー環境は最後の push から 1 時間後、または PR クローズ時に自動削除されます。',
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNum,
+            });
+            const existing = comments.find(c =>
+              c.user.type === 'Bot' && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNum,
+                body,
+              });
+            }
+
+      - name: Show preview summary
+        if: always()
+        run: |
+          {
+            echo "## Preview Deployed (Azure Container Apps)"
+            echo ""
+            echo "**URL:** ${PREVIEW_URL}"
+            echo ""
+            echo "**E2E result:** ${{ steps.e2e.outcome }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail job if E2E failed
+        if: steps.e2e.outcome == 'failure'
+        run: |
+          echo "E2E tests failed against the Azure Container Apps preview environment."
+          exit 1
+
+  # ===========================================================================
+  # e2e-appservice: App Service プレビュー URL に対し E2E（System Test）を実行
+  # ===========================================================================
+  e2e-appservice:
+    if: github.event.action != 'closed'
+    needs: deploy-preview-appservice
+    runs-on: ubuntu-latest
+    env:
+      PR_NUM: ${{ github.event.pull_request.number }}
+      PREVIEW_URL: ${{ needs.deploy-preview-appservice.outputs.url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Playwright browsers
+        run: ./gradlew :system-test:testClasses && npx playwright install --with-deps chromium
+
+      - name: Run E2E (System Test) against preview
+        id: e2e
+        continue-on-error: true
+        run: ./gradlew :system-test:test -Dtest.base-url="$PREVIEW_URL"
 
       - name: Upload E2E screenshots
         if: always()
@@ -424,7 +568,6 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         env:
-          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
         with:
           script: |
@@ -473,9 +616,9 @@ jobs:
         if: always()
         run: |
           {
-            echo "## App Service Preview Deployed"
+            echo "## Preview Deployed (Azure App Service)"
             echo ""
-            echo "**URL:** ${{ steps.deploy.outputs.url }}"
+            echo "**URL:** ${PREVIEW_URL}"
             echo ""
             echo "**E2E result:** ${{ steps.e2e.outcome }}"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -483,9 +626,12 @@ jobs:
       - name: Fail job if E2E failed
         if: steps.e2e.outcome == 'failure'
         run: |
-          echo "E2E tests failed against the App Service preview environment."
+          echo "E2E tests failed against the Azure App Service preview environment."
           exit 1
 
+  # ===========================================================================
+  # cleanup-preview: PR クローズ時に両プレビュー環境を削除
+  # ===========================================================================
   cleanup-preview:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest
