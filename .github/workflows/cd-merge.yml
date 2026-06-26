@@ -193,9 +193,22 @@ jobs:
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          # Defender のスキャナ backend は稀に "context deadline exceeded" で
+          # タイムアウトする。失敗時はリトライして SARIF を確実に取得し、PR の
+          # code scanning annotation が欠落しないようにする。
+          scan_with_retry() {
+            local attempts=3 i
+            for i in $(seq 1 "$attempts"); do
+              if "$@"; then return 0; fi
+              echo "::warning::Defender scan attempt ${i}/${attempts} failed; retrying in 30s..."
+              sleep 30
+            done
+            echo "::error::Defender scan failed after ${attempts} attempts."
+            return 1
+          }
+          scan_with_retry ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
           # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
-          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+          scan_with_retry ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
       # Dockerfile の該当行へ remap し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
