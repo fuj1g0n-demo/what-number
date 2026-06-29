@@ -1,0 +1,10 @@
+name: what-number
+version: 1.0.0
+description: APM project for what-number
+author: fuj1g0n
+dependencies:
+  apm:
+  - microsoft/azure-skills
+  mcp: []
+includes: auto
+scripts: {}

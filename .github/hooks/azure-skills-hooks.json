@@ -1,0 +1,6 @@
+{
+  "paths": [
+    "./hooks/copilot-hooks.json"
+  ],
+  "exclusive": true
+}
