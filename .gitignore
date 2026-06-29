@@ -24,3 +24,7 @@ hs_err_pid*
 
 # Logs
 *.log
+
+
+# APM dependencies
+apm_modules/

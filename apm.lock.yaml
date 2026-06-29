@@ -1,0 +1,60 @@
+lockfile_version: '1'
+generated_at: '2026-06-29T02:49:35.721257+00:00'
+apm_version: 0.18.0
+dependencies:
+- repo_url: microsoft/azure-skills
+  host: github.com
+  resolved_commit: c752fe85c8e499e32e34eb8a5498c22d5dd586c8
+  package_type: marketplace_plugin
+  deployed_files:
+  - .agents/skills/airunway-aks-setup
+  - .agents/skills/appinsights-instrumentation
+  - .agents/skills/azure-ai
+  - .agents/skills/azure-aigateway
+  - .agents/skills/azure-cloud-migrate
+  - .agents/skills/azure-compliance
+  - .agents/skills/azure-compute
+  - .agents/skills/azure-cost
+  - .agents/skills/azure-deploy
+  - .agents/skills/azure-diagnostics
+  - .agents/skills/azure-enterprise-infra-planner
+  - .agents/skills/azure-hosted-copilot-sdk
+  - .agents/skills/azure-kubernetes
+  - .agents/skills/azure-kusto
+  - .agents/skills/azure-messaging
+  - .agents/skills/azure-prepare
+  - .agents/skills/azure-quotas
+  - .agents/skills/azure-rbac
+  - .agents/skills/azure-reliability
+  - .agents/skills/azure-resource-lookup
+  - .agents/skills/azure-resource-visualizer
+  - .agents/skills/azure-storage
+  - .agents/skills/azure-upgrade
+  - .agents/skills/azure-validate
+  - .agents/skills/entra-agent-id
+  - .agents/skills/entra-app-registration
+  - .agents/skills/microsoft-foundry
+  - .agents/skills/python-appservice-deploy
+  - .github/hooks/azure-skills-copilot-hooks.json
+  - .github/hooks/azure-skills-hooks.json
+  - .github/hooks/scripts/azure-skills/hooks/scripts/track-telemetry.ps1
+  - .github/hooks/scripts/azure-skills/hooks/scripts/track-telemetry.sh
+  deployed_file_hashes:
+    .github/hooks/azure-skills-copilot-hooks.json: sha256:8bee2b1d5948b37a8f92c208a9cfa9903cddfe70cb7fbccd1a21a945b48af6f6
+    .github/hooks/azure-skills-hooks.json: sha256:6ecaa6afb908e02938db5e88eed27ab45ee56a5800e37a1823b30c0fe7f9d936
+    .github/hooks/scripts/azure-skills/hooks/scripts/track-telemetry.ps1: sha256:1917215760ab73fcaf9386036967cd9cb8b13101cf6baa75400ee10c182de56f
+    .github/hooks/scripts/azure-skills/hooks/scripts/track-telemetry.sh: sha256:a88ec0a8971aeda8ae186c1ae6ceabfae90828e90b2e1bad0d8202bd0bc12265
+  content_hash: sha256:0d5b3160c2f8e5f920696597cdbdd371c8676a5d664a0dad57a643e9097aa2dc
+mcp_servers:
+- azure
+mcp_configs:
+  azure:
+    name: azure
+    transport: stdio
+    args:
+    - -y
+    - '@azure/mcp@latest'
+    - server
+    - start
+    registry: false
+    command: npx
