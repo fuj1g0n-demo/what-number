@@ -199,16 +199,20 @@ jobs:
           ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
-      # Dockerfile の該当行へ remap し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
-      - name: Remap MDVM SARIF locations to Dockerfile
-        run: |
-          python3 .github/scripts/remap_mdvm_sarif_to_dockerfile.py \
-            defender-mdvm.sarif sbom.json Dockerfile
+      # Dockerfile の該当行へ anchor し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
+      - name: Anchor MDVM SARIF locations to Dockerfile
+        id: anchor
+        uses: fuj1g0n/sarif-dockerfile-anchor@v0.3.0
+        with:
+          sarif: defender-mdvm.sarif
+          sbom: sbom.json
+          dockerfile: Dockerfile
+          output: defender-mdvm.enriched.sarif
 
       - name: Upload Defender CLI results to Security tab
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: defender-mdvm.sarif
+          sarif_file: ${{ steps.anchor.outputs.sarif }}
           category: defender-mdvm
 
   # ===========================================================================
