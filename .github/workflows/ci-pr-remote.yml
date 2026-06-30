@@ -167,6 +167,7 @@ jobs:
       id-token: write         # Azure Login / ACR pull (OIDC) 用
       actions: read           # private リポジトリで upload-sarif が run 情報取得に必要
       security-events: write  # code scanning への SARIF 投入に必須（GHAS 前提）
+      pull-requests: write    # code scanning 結果へのリンクを PR コメントに投稿する用
     env:
       PR_NUM: ${{ github.event.pull_request.number }}
     steps:
@@ -214,6 +215,75 @@ jobs:
         with:
           sarif_file: ${{ steps.anchor.outputs.sarif }}
           category: defender-mdvm
+
+      # GitHub は新しい code scanning 構成を初めて導入したときだけ、
+      # github-advanced-security のオンボーディングコメント（PR の code scanning 結果へのリンク付き）を投稿する。
+      # 既にオンボーディング済みの構成では再表示されないため、同じ結果一覧へのリンクを
+      # 自前で sticky コメントとして投稿する。
+      - name: Comment a link to this PR's code scanning results
+        if: ${{ github.event.pull_request.number }}
+        uses: actions/github-script@v7
+        env:
+          SARIF: ${{ steps.anchor.outputs.sarif }}
+        with:
+          script: |
+            const fs = require('fs');
+            const pr = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+            const url = `https://github.com/${owner}/${repo}/security/code-scanning?query=pr%3A${pr}+is%3Aopen`;
+            const sev = { critical: 0, high: 0, medium: 0, low: 0 };
+            let total = 0;
+            try {
+              const sarif = JSON.parse(fs.readFileSync(process.env.SARIF, 'utf8'));
+              for (const run of sarif.runs || []) {
+                const score = {};
+                for (const rule of run.tool?.driver?.rules || []) {
+                  const s = rule.properties?.['security-severity'];
+                  if (s !== undefined) score[rule.id] = Number(s);
+                }
+                for (const res of run.results || []) {
+                  total++;
+                  const s = score[res.ruleId];
+                  if (s >= 9.0) sev.critical++;
+                  else if (s >= 7.0) sev.high++;
+                  else if (s >= 4.0) sev.medium++;
+                  else if (s > 0.0) sev.low++;
+                  else if (res.level === 'error') sev.high++;
+                  else if (res.level === 'note') sev.low++;
+                  else sev.medium++;
+                }
+              }
+            } catch (e) {
+              core.warning(`Could not read SARIF for finding counts: ${e.message}`);
+            }
+            const marker = '<!-- defender-mdvm-scan-results -->';
+            const body = [
+              marker,
+              '## Defender (MDVM) code scanning results',
+              '',
+              `**${total}** finding(s) were uploaded to GitHub code scanning for this pull request.`,
+              '',
+              `Severity breakdown \u2014 Critical: ${sev.critical}, High: ${sev.high}, Medium: ${sev.medium}, Low: ${sev.low}.`,
+              '',
+              `- **[View all code scanning alerts for this pull request](${url})**`,
+              '',
+              'Individual alerts are also annotated inline on the **Files changed** tab.',
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: pr, per_page: 100,
+            });
+            const existing = comments.find(
+              (c) => c.user.type === 'Bot' && c.body && c.body.includes(marker),
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: pr, body,
+              });
+            }
 
   # ===========================================================================
   # deploy-preview-aca: スキャン済みイメージを Azure Container Apps へデプロイ
