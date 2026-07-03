@@ -21,7 +21,6 @@
 | 配備済み Skill | `.agents/skills/` 配下 | 各エージェントが発見・ロードする実体 | APM が生成（手動編集禁止） |
 | 外部 Skill パッケージ | `.agents/skills/` 配下 | Azure 操作等の汎用 Skill（microsoft/azure-skills） | APM 依存としてコミット固定 |
 | 常時ロード instructions | `.github/copilot-instructions.md` | プロジェクト概要・統制ルール・Skill 一覧 | 手動編集 |
-| カスタムエージェント | `.github/agents/` 配下 | ペルソナ・権限・使用 Skill の宣言のみを持つ薄いプロファイル | 手動編集 |
 | APM マニフェスト | リポジトリ直下の apm.yml | 依存宣言・配備ターゲット定義 | 手動編集 |
 | APM ロックファイル | リポジトリ直下の apm.lock.yaml | 解決済みコミットとファイルハッシュの記録 | APM が生成 |
 
@@ -56,17 +55,20 @@ Skill は以下の 2 側面で分類する。
 | azure-cicd-ops | CI/CD ワークフローの全体像、プレビュー環境、運用上の注意 |
 | screenshot | Playwright CLI によるスクリーンショット撮影手順 |
 
-## カスタムエージェントの設計
+## カスタムエージェントを設けない判断
 
-カスタムエージェント（`.github/agents/` 配下）は以下のみを定義する薄いプロファイルとする:
+エージェント製品固有のカスタムエージェント機構（例: GitHub Copilot の `.github/agents/`）は使用しない。
 
-- ペルソナ（役割・専門性）
-- 権限（例: 「確認済み」ラベル付与の唯一の権限者）
-- ミッションと、参照すべき Skill の一覧
-- タスク管理媒体（GitHub issue またはタスクファイル）等のエージェント固有差分
+- 手順的知識はすべて Skill に部品化されており、エージェント定義に残る内容（ペルソナ・使用 Skill の宣言）が薄く、独立した構成要素として維持する価値が低い
+- カスタムエージェント機構は特定製品専用であり、クロスエージェント互換の設計原則に反する
+- タスク管理媒体の差分（GitHub issue またはタスクファイル）は `issue-workflow` と `task-file-workflow` の Skill の使い分けで表現する
 
-チェックフロー・操作手順等の手順的知識はエージェント定義に直接記述せず、Skill を参照する。
-これにより、同一の品質チェック手順を issue 駆動・タスクファイル駆動の両エージェントで共有する。
+### 「確認済み」の統制方式
+
+ユーザーストーリーの「確認済み」判定は、特定エージェントの身元ではなく **プロセスの完遂と証跡** を根拠とする:
+
+- 「確認済み」ラベル（タスクファイル方式では `verified` ステータス）は、`user-story-quality-check` Skill のチェックフローをすべて完遂し、構造化コメントを証跡として記録した場合にのみ付与できる
+- 証跡（構造化コメント）が存在しない「確認済み」は無効とみなし、ユーザーはラベルを引きはがすことができる
 
 ## APM による管理ルール
 
@@ -85,7 +87,7 @@ Skill は以下の 2 側面で分類する。
 
 | エージェント | 発見パス | 備考 |
 |---|---|---|
-| GitHub Copilot（CLI / Coding Agent / IDE） | `.agents/skills/` および `.github/skills/` | instructions・カスタムエージェントも読む |
+| GitHub Copilot（CLI / Coding Agent / IDE） | `.agents/skills/` および `.github/skills/` | instructions も読む |
 | OpenAI Codex | `.agents/skills/` | instructions 機構は持たない |
 | Claude Code | `.claude/skills/` および `.agents/skills/` | 必要に応じて claude ターゲットを追加可能 |
 | Cursor / Gemini CLI / その他 | `.agents/skills/` | Agent Skills 標準準拠 |

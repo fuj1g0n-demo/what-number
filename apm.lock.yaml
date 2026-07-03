@@ -1568,7 +1568,7 @@ local_deployed_file_hashes:
   .agents/skills/branching-release/SKILL.md: sha256:6a8f860bc8b6ebce9c86f5cb4be297cc2dd85285dbbdcf8fee3cecaa32c680c8
   .agents/skills/gradle-build/SKILL.md: sha256:2d273b7b34ceb08da914b9ff7ef5e004acc0373000acc252a3c7e6e655f91202
   .agents/skills/incremental-planning/SKILL.md: sha256:44cba9e384878974925aec4ca169257dd2411509ecf9b850283e3101eda9fc3d
-  .agents/skills/issue-workflow/SKILL.md: sha256:4342be1199997148656c1082085862a09baa9f72d2159aac93e98a03020d7d12
+  .agents/skills/issue-workflow/SKILL.md: sha256:b760181327d16640669b412bbb9bf7329ff3b275441ed48e3eda69b822a84d58
   .agents/skills/java-spring-conventions/SKILL.md: sha256:bef8d693a29f5652760939976ca4932cf79bf68b841d2bd4ac6097e6f843fc29
   .agents/skills/manual-test-gherkin/SKILL.md: sha256:ed59c3b90755e7a1cbf7d01bb45a5493f21ec5a091e46a577920a23c3382cbe2
   .agents/skills/pr-review/SKILL.md: sha256:3d51ad9f7354ce95d3ad158590d53845ceeee2753f7d32bb6a5268342432b9da
@@ -1576,4 +1576,4 @@ local_deployed_file_hashes:
   .agents/skills/task-file-workflow/SKILL.md: sha256:b0a1b9c7546bc8bc2c85e0bf2a249683b7336687ecd67061f6258e2b500338fd
   .agents/skills/testing-strategy/SKILL.md: sha256:eeb50200f110d90fc15e94e6539da2dfb93f24cd55c3afe7f8ef2b4c95070691
   .agents/skills/thymeleaf-frontend/SKILL.md: sha256:fc22c282cad3fc1c966db0b406c6c2c17bd9c601f5db866fc9ab971d77fc75a9
-  .agents/skills/user-story-quality-check/SKILL.md: sha256:31a6efed8c71a581d260f83541e050f8152198ca0799ef16a10f9ec3227acc30
+  .agents/skills/user-story-quality-check/SKILL.md: sha256:fd6cb8c20344987a81de2950a21414d12417c236b996666467c70ba5cdbcf391
