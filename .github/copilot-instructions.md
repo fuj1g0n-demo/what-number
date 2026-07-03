@@ -4,9 +4,25 @@
 
 本リポジトリは、金融・公共のお客様向けデモ用「この数字、なんの数字？」クイズアプリケーションです。
 
-## ドキュメント規約
+- 技術スタック: Java 21 / Spring Boot 3.4 / Thymeleaf（SSR） / Bootstrap 5（CDN） / Gradle（Kotlin DSL）
+- 詳細な技術選定と根拠: `docs/design/tech-stack.md`
 
-### ドキュメント配置ルール
+## Skill 中心の知識体系
+
+開発プロセス・実装規約の手順的知識は、APM（Agent Package Manager）で管理された
+**Agent Skill**（`.apm/skills/` がソース、`.agents/skills/` に配備）として提供される。
+該当する作業を行う際は、対応する skill をロードしてその手順に従うこと。
+
+| 側面 | skill |
+|---|---|
+| 開発プロセス | `issue-workflow`, `user-story-quality-check`, `incremental-planning`, `pr-review`, `branching-release`, `manual-test-gherkin`, `task-file-workflow` |
+| 言語・アーキテクチャ | `java-spring-conventions`, `testing-strategy`, `thymeleaf-frontend`, `gradle-build`, `azure-cicd-ops`, `screenshot` |
+
+Skill の管理・配備ルールは `docs/design/agent-design.md` を参照。
+
+## 常時遵守すべきルール
+
+### ドキュメント配置
 
 | ドキュメント種別 | 配置場所 | 備考 |
 |---|---|---|
@@ -17,112 +33,20 @@
 
 ### 記述フォーマット
 
-- ユーザーストーリーの Acceptance Criteria: **EARS（Easy Approach to Requirements Syntax）形式**
+- ユーザーストーリーの Acceptance Criteria: **EARS 形式**
 - System Test および手動テストのテストケース: **Gherkin 形式**
 
-## ビルド・テスト
-
-- ローカル環境でのビルド・実行・テストを可能とすること
-- テストは以下の 3 種類を設ける:
-  - **Unit Test**: 個々のクラス・メソッド単位のテスト
-  - **Integration Test**: 複数コンポーネント間の結合テスト
-  - **System Test**: エンドツーエンドのシステムテスト
-
-## Issue 管理プロセス
-
-### Issue カテゴリ
-
-Issue は以下の 4 カテゴリで管理する。各カテゴリには対応するラベルを付与する。
-
-| カテゴリ | ラベル | 説明 |
-|---|---|---|
-| ユーザーストーリー | `user-story` | ユーザー視点の要件記述 |
-| 設計 | `design` | 要件・基本設計・アーキテクチャの追加・変更 |
-| 実装 | `implementation` | 詳細設計・コーディング・自動テスト |
-| 手動テスト | `manual-test` | 自動テストでカバーできないテスト |
-
-### Issue の親子関係
-
-- 設計・実装・手動テストカテゴリの issue は、必ずユーザーストーリーカテゴリの issue の **sub-issue（GitHub ネイティブ Sub-issues 機能）** とする
-- ユーザーストーリーが最上位の親 issue となる
-
-### 作業開始条件
-
-ユーザーストーリーカテゴリの issue およびその sub-issue に対する作業を開始するには、以下の条件をすべて満たす必要がある:
-
-1. ユーザーストーリーカテゴリの issue に **「確認済み」ラベル** が付与されていること
-
-### 「確認済み」ラベルに関するルール
+### 「確認済み」ラベルの統制
 
 - 「確認済み」ラベルは **`user-story-check-agent` カスタムエージェントのみ** が付与できる
 - **他のいかなる Copilot エージェント・モードも「確認済み」ラベルを付与してはならない**
-- ユーザーが「確認済み」ラベルを付与することはないが、引きはがすことはできる
+- ユーザーストーリー issue およびその sub-issue の作業開始には、親ユーザーストーリーへの「確認済み」ラベル付与が必要（詳細は `issue-workflow` skill）
 
-### ステータスラベル
+### レビュー要件
 
-| ラベル | 付与条件 |
-|---|---|
-| `確認済み` | `user-story-check-agent` がすべてのチェックに合格した場合に付与 |
-| `要確認` | `user-story-check-agent` がチェックで問題を検出した場合に付与 |
+- 実装・レビュー時は `docs/design/review-requirements.md` のチェック項目に準拠すること（運用手順は `pr-review` skill)
+- 👤 人間 判定項目の合否を AI が最終判定してはならない
 
-### Issue のクローズとリオープン
+### ブランチ・PR
 
-- ユーザーストーリーのクローズ前に、関連するすべての成果物（コード、ドキュメント、README 等）が更新されていることを確認すること
-- クローズ後に対応漏れ（ドキュメント未更新、関連ファイルの修正漏れ等）が発覚した場合は、**新規 issue を作成するのではなく、元の issue を reopen** する
-- reopen した issue には、漏れた作業内容を本文またはコメントに追記すること
-- 追加修正の PR は、reopen した元の issue に `Closes #<issue番号>` で紐づけること
-- ブランチ命名も元の issue 番号を使用すること（例: `feature/#<元issue番号>-<修正内容>`）
-
-## ブランチ戦略（GitHub Flow）
-
-### ブランチ運用ルール
-
-1. **`main` ブランチ** は常にデプロイ可能な状態を維持する
-2. 作業は issue ごとに **feature branch** を作成する
-   - 命名規則: `feature/#<issue番号>-<短い説明>`
-   - 例: `feature/#42-add-quiz-api`
-3. feature branch から `main` への統合は **Pull Request（PR）** を通じて行う
-
-### Pull Request ルール
-
-1. PR は対応する issue を `Closes #<issue番号>` で参照すること
-2. PR マージには **最低 1 名のレビュー承認** を必須とする
-3. PR タイトルは変更内容を簡潔に表すこと
-4. PR の説明には以下を含めること:
-   - 変更の概要
-   - 対応する issue 番号
-   - テスト結果の概要
-
-## レビュー要件
-
-**実装時およびレビュー時には、必ず `docs/design/review-requirements.md` に定義されたレビュー要件を参照し、すべてのチェック項目に準拠すること。**
-
-### 判定方式
-
-レビュー要件の各チェック項目には「🤖 AI（AI 自動判定）」と「👤 人間（人間レビュー必須）」の判定方式が定義されている。
-
-- **🤖 AI 項目**: AI が自動で合否を判定する
-- **👤 人間 項目**: AI は分析結果・懸念点の提示までを行い、**最終判定は必ず人間レビュアーに委ねる**。AI が 👤 人間 項目の合否を最終判定してはならない
-
-### レビュー要件の適用ルール
-
-- コードを実装・変更する際は、対応するカテゴリのレビュー観点を満たすように実装すること
-- PR レビューを行う際は、対応するカテゴリのチェック項目をすべて確認すること
-- 👤 人間 項目については、AI は関連する差分・情報を整理して人間レビュアーに提示し、判断を求めること
-- レビュー要件の詳細は `docs/design/review-requirements.md` を参照すること
-
-### カテゴリ別レビュー観点の概要
-
-| PR カテゴリ | 主なレビュー観点 |
-|---|---|
-| 全 PR 共通 | ブランチ命名、Issue 参照、PR 記載事項、作業開始条件、CI パス、差分の妥当性（👤） |
-| 設計（`design`） | ドキュメント配置場所、コード例禁止、AC との整合性（👤）、技術選定 5 原則準拠（👤） |
-| 実装（`implementation`） | Java 21 活用（👤）、Spring Boot 規約、レイヤー分離、テスト計画準拠（👤）、テスト品質、セキュリティ（👤） |
-| 手動テスト（`manual-test`） | Gherkin 形式、自動テスト補完性（👤）、テスト結果記録（👤）、環境条件 |
-
-### レビュープロセス
-
-- レビュー指摘は「Must（必須修正）」と「Want（推奨・任意）」を明示すること
-- Must 指摘がすべて解消されるまで Approve しないこと
-- CI がすべてパスしていない PR はマージしないこと
-- 👤 人間 項目すべてについて人間レビュアーの OK が得られるまで PR をマージしないこと
+- GitHub Flow。ブランチ命名は `feature/#<issue番号>-<短い説明>`、PR は `Closes #<issue番号>` で issue を参照（詳細は `branching-release` skill）
