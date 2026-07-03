@@ -1,0 +1,94 @@
+# Temporary verification workflow: can the Defender CLI (v2 stable and v3 RC)
+# run `scan image` / `scan sbom` on GitHub Actions WITHOUT any DEFENDER_*
+# credential secrets, relying only on the runner's ambient GitHub Actions OIDC
+# token? This repo's org (fuj1g0n-demo-01) is onboarded to a Defender for
+# Cloud GitHub connector (ghec-mdc-connector), so this verifies whether the
+# connector resolves the previously observed 403 / Missing MDC Connector
+# errors. v3 runs with --no-publish.
+name: test-defender-oidc
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE: what-number:test
+
+jobs:
+  v3-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and export the test image
+        run: |
+          docker build -t "$IMAGE" .
+          docker save "$IMAGE" -o image.tar
+
+      - name: Download Defender CLI v3 (CDN public/v2/latest)
+        run: |
+          curl -sL -o defender "https://cli.dfd.security.azure.com/public/v2/latest/Defender_linux-x64"
+          chmod +x defender
+          ./defender --version
+
+      - name: v3 auth login (OIDC, no credentials)
+        run: ./defender auth login --no-color 2>&1 | tee v3-login.log || true
+
+      - name: v3 scan image (no credentials, --no-publish)
+        run: |
+          ./defender scan image image.tar --no-publish --no-color --log-level debug -o v3-image.sarif 2>&1 | tee v3-image.log || echo "SCAN_IMAGE_FAILED=$?"
+          test -s v3-image.sarif && echo "SARIF_PRESENT=yes" || echo "SARIF_PRESENT=no"
+
+      - name: v3 scan sbom (no credentials, --no-publish)
+        if: always()
+        run: |
+          ./defender scan sbom image.tar --no-publish --no-color --log-level debug -o v3-sbom.cyclonedx.json 2>&1 | tee v3-sbom.log || echo "SCAN_SBOM_FAILED=$?"
+          test -s v3-sbom.cyclonedx.json && echo "SBOM_PRESENT=yes" || echo "SBOM_PRESENT=no"
+
+      - name: v3 summary
+        if: always()
+        run: |
+          echo "=== auth status ==="
+          ./defender auth status --no-color || true
+          echo "=== artifacts ==="
+          ls -lh v3-image.sarif v3-sbom.cyclonedx.json 2>/dev/null || true
+          command -v jq >/dev/null && jq -r '.runs[0].results|length' v3-image.sarif 2>/dev/null || true
+          command -v jq >/dev/null && jq -r '.components|length' v3-sbom.cyclonedx.json 2>/dev/null || true
+
+  v2-oidc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and export the test image
+        run: |
+          docker build -t "$IMAGE" .
+          docker save "$IMAGE" -o image.tar
+
+      - name: Download Defender CLI v2 (aka.ms stable)
+        run: |
+          curl -sL -o defender "https://aka.ms/defender-cli_linux-x64"
+          chmod +x defender
+          ./defender --version || true
+
+      - name: v2 scan image (no credentials)
+        run: |
+          ./defender scan image image.tar --scanner mdvm --defender-output v2-image.sarif 2>&1 | tee v2-image.log
+          echo "exit_code=$?"
+          test -s v2-image.sarif && echo "SARIF_PRESENT=yes" || echo "SARIF_PRESENT=no"
+
+      - name: v2 scan sbom (no credentials)
+        if: always()
+        run: |
+          ./defender scan sbom image.tar --scanner mdvmsbom --defender-output v2-sbom.sarif --output v2-sbom.cyclonedx.json 2>&1 | tee v2-sbom.log
+          echo "exit_code=$?"
+          test -s v2-sbom.cyclonedx.json && echo "SBOM_PRESENT=yes" || echo "SBOM_PRESENT=no"
+
+      - name: v2 summary
+        if: always()
+        run: |
+          ls -lh v2-image.sarif v2-sbom.cyclonedx.json 2>/dev/null || true
