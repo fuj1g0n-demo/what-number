@@ -191,10 +191,10 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 ### セットアップ手順
 
-1. **Microsoft Entra ID にアプリ登録**を作成し、GitHub Actions 用の
-   **OIDC フェデレーション資格情報**を構成する。
-   サービスプリンシパルには、初回の `infra-bootstrap` 実行のために対象サブスクリプション/リソースグループへ
-   ロール割り当て権限（`Owner` もしくは `Contributor` + `User Access Administrator`）を付与する。
+1. Azure デプロイ用の Microsoft Entra アプリ登録を作成し、GitHub Actions 用 OIDC フェデレーション資格情報を構成する。
+   サービスプリンシパルに `AZURE_DEPLOY_CLIENT_ID` を設定する。
+   初回の `infra-bootstrap` 実行には、対象サブスクリプションまたはリソースグループのロール割り当て権限が必要。
+   `Owner` または `Contributor` と `User Access Administrator` を付与する。
 2. Azure Artifacts 発行専用の Entra アプリ登録を作成し、GitHub Actions 用 OIDC フェデレーション資格情報を追加する。Issuer は `https://token.actions.githubusercontent.com`、Audience は `api://AzureADTokenExchange`、Subject は次の値にする。
    `repo:fuj1g0n-demo/what-number:ref:refs/heads/main`
    このアプリには Azure サブスクリプションのロールを割り当てない。
@@ -208,9 +208,9 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 | 変数名 | 説明 | 例 |
 |---|---|---|
-| `AZURE_CLIENT_ID` | OIDC 用アプリ登録のクライアント ID | `00000000-0000-...` |
+| `AZURE_DEPLOY_CLIENT_ID` | Azure デプロイ用 OIDC アプリ登録のクライアント ID | `00000000-0000-...` |
 | `AZURE_ARTIFACTS_CLIENT_ID` | Azure Artifacts 専用 OIDC アプリのクライアント ID | `00000000-0000-...` |
-| `AZURE_TENANT_ID` | テナント ID | `00000000-0000-...` |
+| `AZURE_TENANT_ID` | 両方の OIDC アプリが属するテナント ID。`azure/login@v2` のサービスプリンシパル認証で必須 | `00000000-0000-...` |
 | `AZURE_SUBSCRIPTION_ID` | サブスクリプション ID | `00000000-0000-...` |
 | `AZURE_RESOURCE_GROUP` | 新規作成するリソースグループ名 | `rg-quiz-app` |
 | `AZURE_LOCATION` | リージョン | `japaneast` |
