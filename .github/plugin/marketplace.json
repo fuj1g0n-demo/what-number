@@ -1,0 +1,18 @@
+{
+  "name": "what-number",
+  "owner": {
+    "name": "fuj1g0n-demo"
+  },
+  "metadata": {
+    "description": "このリポジトリで使用する GitHub Copilot Plugin",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "what-number",
+      "description": "このリポジトリ固有の開発手順と実装規約を提供する。",
+      "version": "1.0.0",
+      "source": "./plugins/what-number"
+    }
+  ]
+}

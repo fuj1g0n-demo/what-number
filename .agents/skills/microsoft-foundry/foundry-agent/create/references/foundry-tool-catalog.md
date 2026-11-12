@@ -2,10 +2,12 @@
 
 Reference for wiring a **remote tool** (catalog tile or generic MCP server) into a Foundry project as a `RemoteTool` project connection, so a toolbox can attach to it.
 
+> 🚦 **Toolbox creation gate:** before creating a toolbox/connection, you MUST read the boundary rules in [create-hosted.md → Toolbox creation boundary](../create-hosted.md#toolbox-creation-boundary) and follow them, then continue with the rest of this file.
+
 Three catalog backends cooperate: the **asset-gallery** index discovers connectors, the Logic Apps **managedApis** GET supplies OAuth metadata, and the Logic Apps **apiOperations** GET supplies the operation list and input schemas. Skip these calls only for fully BYO `generic_mcp` servers — every catalog-MCP or connector-namespace flow needs all three.
 
-> 📘 For the toolbox MCP endpoint, protocol, and testing, see [toolbox-reference.md](toolbox-reference.md).
-> 📘 For prompt-agent MCP wiring (without a toolbox), see [tool-mcp.md](tool-mcp.md).
+> 📘 For the toolbox MCP endpoint, protocol, and testing, see [use-toolbox-in-hosted-agent.md](use-toolbox-in-hosted-agent.md).
+> 📘 For prompt-agent MCP wiring (without a toolbox), see [tool-mcp.md](tools/prompt-agent/tool-mcp.md).
 
 ## When to use this reference
 
@@ -46,13 +48,13 @@ PUT https://management.azure.com/subscriptions/{sub}/resourceGroups/{rg}
 
 ### Preflight RBAC
 
-Caller needs **Azure AI Developer** or **Cognitive Services Contributor** on the project scope. Run this before the first PUT to surface 403s early:
+Caller needs **Foundry Project Manager** or **Cognitive Services Contributor** on the project scope. Run this before the first PUT to surface 403s early:
 
 ```pwsh
 $oid = az ad signed-in-user show --query id -o tsv
 $projId = "/subscriptions/$sub/resourceGroups/$rg/providers/Microsoft.CognitiveServices/accounts/$acct/projects/$proj"
-az role assignment list --assignee $oid --scope $projId --all `
-  --query "[?roleDefinitionName=='Azure AI Developer' || roleDefinitionName=='Cognitive Services Contributor'].roleDefinitionName" -o tsv
+az role assignment list --assignee $oid --scope $projId --include-inherited --all `
+  --query "[?roleDefinitionName=='Foundry Project Manager' || roleDefinitionName=='Cognitive Services Contributor'].roleDefinitionName" -o tsv
 ```
 
 Empty output → caller lacks the required role; expect `403 AuthorizationFailed` on PUT until granted.
@@ -625,7 +627,7 @@ Operations registered for the test: `GetEmailsV2` (read emails with `folderPath`
 
 Verifying a fresh connection is the only toolbox operation in scope of this reference. Toolboxes are upserted implicitly by `POST /versions`; no separate container create is needed.
 
-The `$dp` value below is the project's data-plane endpoint, in the same `{project_endpoint}` form used elsewhere in these references — `https://<account>.services.ai.azure.com/api/projects/<project>`. The host segment varies by Foundry account/region; read it from a non-`FOUNDRY_`-prefixed env var (see [toolbox-reference.md § Agent env contract](toolbox-reference.md#agent-env-contract)) rather than hardcoding. The bearer-token resource is `https://ai.azure.com`, NOT ARM.
+The `$dp` value below is the project's data-plane endpoint, in the same `{project_endpoint}` form used elsewhere in these references — `https://<account>.services.ai.azure.com/api/projects/<project>`. The host segment varies by Foundry account/region; read it from a non-`FOUNDRY_`-prefixed env var (see [use-toolbox-in-hosted-agent.md § Set TOOLBOX_ENDPOINT](use-toolbox-in-hosted-agent.md#1-set-toolbox_endpoint)) rather than hardcoding. The bearer-token resource is `https://ai.azure.com`, NOT ARM.
 
 ```pwsh
 # 0. Constants.
@@ -636,7 +638,6 @@ $connId = "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Cognitiv
 $tok  = az account get-access-token --resource "https://ai.azure.com" --query accessToken -o tsv
 $hdr  = @{ Authorization      = "Bearer $tok"
            "Content-Type"     = "application/json"
-           "Foundry-Features" = "Toolboxes=V1Preview"   # REQUIRED
            Accept             = "application/json, text/event-stream" }
 
 # 1. Create a toolbox version with the connection attached.
@@ -667,13 +668,13 @@ Invoke-WebRequest -Method POST -Headers $hdr -UseBasicParsing -Body $call `
    -Uri "$dp/toolboxes/$tb/mcp?api-version=v1"
 ```
 
-The `Foundry-Features: Toolboxes=V1Preview` header is mandatory — without it the dataplane returns 404. The response body for `/mcp` is plain JSON (no SSE `data:` framing) despite the `text/event-stream` Accept.
+The response body for `/mcp` is plain JSON (no SSE `data:` framing) despite the `text/event-stream` Accept.
 
 ## Required RBAC summary
 
 | Operation | Role |
 |---|---|
-| PUT any connection above | **Azure AI Developer** on the project (or **Cognitive Services Contributor** on the account) |
+| PUT any connection above | **Foundry Project Manager** on the project (or **Cognitive Services Contributor** on the account) |
 | Drive OAuth consent (`gateway_connector`, `catalog_MCP` managed-OAuth) | The end-user themselves, signed in to the subscription's tenant |
 | `ProjectManagedIdentity` against a Cognitive Services upstream | Project MI needs the upstream's data-plane role (e.g. `Cognitive Services Language Owner` for `/language/mcp`) |
 
@@ -691,7 +692,7 @@ The `Foundry-Features: Toolboxes=V1Preview` header is mandatory — without it t
 - **`metadata.audience` is required for `ProjectManagedIdentity`.** Without it the MCP server returns 401.
 - **Header names for `CustomKeys` come from the catalog**, not from a default `Authorization: Bearer` template.
 - **`ApiKey` is rejected** for `category=RemoteTool`. Use `CustomKeys` for static secrets.
-- **OAuth consent is per-user, per-connection, per-project.** Each new caller hits `CONSENT_REQUIRED` (code `-32007`) once and must open the URL the toolbox returns.
+- **OAuth consent is per-user, per-connection, per-project.** Each new caller hits `CONSENT_REQUIRED` once (returned as a nested string code inside an outer `-32006` error) and must open the URL the toolbox returns.
 - **`api.githubcopilot.com/mcp` rejects user OAuth-App tokens.** Use a self-hosted MCP or fall back to OpenAPI.
 - **PMI forwarder drops `target` query strings and mints a fixed audience.** Setting `properties.audience` is accepted but does not change what is sent.
 - **Network-secured Foundry** projects cannot use private-endpoint-only MCP servers — only public endpoints reachable from the Foundry data plane and the Connector Namespace.
@@ -702,7 +703,7 @@ The `Foundry-Features: Toolboxes=V1Preview` header is mandatory — without it t
 - [Toolbox (preview)](https://learn.microsoft.com/azure/foundry/agents/how-to/tools/toolbox)
 - [Private tools catalog](https://learn.microsoft.com/azure/foundry/agents/concepts/tool-catalog#private-tools-catalog)
 - [Cognitive Services projects REST API](https://learn.microsoft.com/rest/api/aiservices/)
-- [tool-mcp.md](tool-mcp.md) — prompt-agent MCP wiring (no toolbox)
-- [toolbox-reference.md](toolbox-reference.md) — MCP endpoint, auth, testing, troubleshooting
-- [agent-tools.md](agent-tools.md) — the agent-tools index
+- [tool-mcp.md](tools/prompt-agent/tool-mcp.md) — prompt-agent MCP wiring (no toolbox)
+- [use-toolbox-in-hosted-agent.md](use-toolbox-in-hosted-agent.md) — MCP endpoint, auth, testing, troubleshooting
+- [agent-tools.md](tools/prompt-agent/agent-tools.md) — the agent-tools index
 - [use-toolbox-in-hosted-agent.md](use-toolbox-in-hosted-agent.md) — wiring a toolbox into a hosted agent

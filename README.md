@@ -74,17 +74,23 @@ Gradle マルチプロジェクト構成（モノレポ）を採用していま�
 ## AI エージェント向け設定（Skill 中心）
 
 AI コーディングエージェント向けの手順的知識は **Agent Skill** として部品化し、
-**APM（Agent Package Manager）** で管理しています。設計の詳細は
+ローカル Skill は **Agent Plugin** 形式、外部 Skill は **APM（Agent Package Manager）** で管理しています。
+設計の詳細は
 [docs/design/agent-design.md](docs/design/agent-design.md) を参照してください。
 
-- ローカル Skill のソース: `.apm/skills/`（開発プロセス系 7 件 + 言語・アーキテクチャ系 6 件）
-- 配備先: `.agents/skills/`（`apm install` が生成。直接編集しない）
-- 外部 Skill: `microsoft/azure-skills`（コミット SHA 固定）
-- Skill の追加・変更手順:
+- ローカル Skill のソース: `plugins/what-number/skills/`（Agent Plugins 1.0）
+- Plugin marketplace: `.github/plugin/marketplace.json`。`.github/copilot/settings.json` で GitHub Copilot の既定 Plugin として有効化
+- 外部 Skill: `microsoft/azure-skills` の各 `skills/<name>` を個別に APM dependency として管理（`main` を参照し、`apm.lock.yaml` で commit 固定）。Azure MCP server など Plugin の他コンポーネントは含めない
+- APM の配備対象: GitHub Copilot のみ。外部 Skill は `.agents/skills/` に配備
+- ローカル Skill の追加・変更は Plugin の `skills/` 以下で行い、Plugin の version と marketplace の version を合わせる
+- Azure Skill dependency の再適用・更新:
 
 ```bash
-# .apm/skills/<name>/SKILL.md を編集後に再配備
+# lockfile を使って dependency を再適用
 apm install
+
+# azure-skills の main を最新 commit に更新して lockfile を更新
+apm update
 ```
 
 ## コンテナ実行

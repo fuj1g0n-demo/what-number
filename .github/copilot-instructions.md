@@ -9,8 +9,9 @@
 
 ## Skill 中心の知識体系
 
-開発プロセス・実装規約の手順的知識は、APM（Agent Package Manager）で管理された
-**Agent Skill**（`.apm/skills/` がソース、`.agents/skills/` に配備）として提供される。
+開発プロセス・実装規約の手順的知識は、`plugins/what-number/` をソースとする
+**Agent Plugin** の Skill として提供される。Plugin は repository marketplace から GitHub Copilot 向けに提供される。
+外部 Azure Skill は APM で管理され、APM の対象は GitHub Copilot のみ。
 該当する作業を行う際は、対応する skill をロードしてその手順に従うこと。
 
 | 側面 | skill |

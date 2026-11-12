@@ -8,8 +8,8 @@
 |----------|-------|---------|
 | Plan `reserved` | `true` | omit (defaults to `false`) |
 | Site `kind` | `'app,linux'` | `'app'` |
-| Site `linuxFxVersion` | e.g. `'NODE\|20-lts'` | omit |
-| Site `WEBSITE_NODE_DEFAULT_VERSION` | omit | e.g. `'~20'` |
+| Site `linuxFxVersion` | e.g. `'NODE\|24-lts'` | omit |
+| Site `WEBSITE_NODE_DEFAULT_VERSION` | omit | e.g. `'~22'` |
 
 > 💡 **Tip:** When both frontend and API use Node.js, prefer a **single Linux App Service Plan** for both. This avoids mixed-platform complexity and keeps all services on one plan.
 
@@ -39,7 +39,7 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
-      linuxFxVersion: 'NODE|20-lts'
+      linuxFxVersion: 'NODE|24-lts'
       alwaysOn: true
       healthCheckPath: '/health'
       appSettings: [

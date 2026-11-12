@@ -2,27 +2,30 @@
 
 ## 概要
 
-本ドキュメントは、AI コーディングエージェント（GitHub Copilot、Claude Code、OpenAI Codex 等）向けの
-リポジトリ設定の設計を定義する。手順的知識を **Agent Skill** として部品化し、
-**APM（Agent Package Manager）** で一元管理する Skill 中心の設計を採用する。
+本ドキュメントは、GitHub Copilot 向けのリポジトリ設定の設計を定義する。
+手順的知識を **Agent Skill** として部品化し、ローカル Skill は **Agent Plugin** 形式、
+外部 Skill は **APM（Agent Package Manager）** で管理する。
 
 ## 設計原則
 
 1. **常時ロードと on-demand の分離**: エージェントが常に必要とする事実（プロジェクト概要、統制ルール）のみを常時ロードされる instructions に置き、手順的知識はトリガー時にのみロードされる Skill に置く
 2. **ドキュメント正本主義**: `docs/specs/`・`docs/design/`・README が知識の正本であり、Skill は「いつ・どのドキュメントを読むか」の導線と実行手順のみを持つ。内容の複製によるドリフトを禁止する
-3. **クロスエージェント互換**: Skill は Agent Skills 標準（SKILL.md 形式）に準拠し、複数のエージェント製品から利用可能なパスに配備する
-4. **APM による一元管理**: ローカル Skill と外部 Skill パッケージの双方を APM のマニフェストとロックファイルで管理し、配備物の完全性を検証可能にする
+3. **標準形式**: ローカル Skill は Agent Plugins 1.0 と Agent Skills 標準（SKILL.md 形式）に準拠する
+4. **限定した配備先**: APM の target は GitHub Copilot のみとし、外部依存の解決結果はロックファイルで固定する
 
 ## 構成要素と配置
 
 | 構成要素 | 配置場所 | 役割 | 管理方法 |
 |---|---|---|---|
-| ローカル Skill（ソース） | `.apm/skills/` 配下 | 本リポジトリ固有の手順的知識の正本 | 手動編集し、APM で配備 |
-| 配備済み Skill | `.agents/skills/` 配下 | 各エージェントが発見・ロードする実体 | APM が生成（手動編集禁止） |
-| 外部 Skill パッケージ | `.agents/skills/` 配下 | Azure 操作等の汎用 Skill（microsoft/azure-skills） | APM 依存としてコミット固定 |
+| ローカル Skill（ソース） | `plugins/what-number/skills/` 配下 | 本リポジトリ固有の手順的知識 | Agent Plugin の一部として手動編集 |
+| ローカル Agent Plugin | `plugins/what-number/` | ローカル Skill を束ねる Agent Plugins 1.0 パッケージ | repository marketplace で配布 |
+| Plugin marketplace | `.github/plugin/marketplace.json` | ローカル Plugin の catalog | GitHub Copilot CLI / VS Code / cloud agent が利用 |
+| Copilot Plugin defaults | `.github/copilot/settings.json` | marketplace と既定 Plugin を共有 | 手動編集 |
+| 外部 Skill | Azure skills の各 `skills/<name>/` | Azure 操作等の汎用 Skill | APM の個別 subdirectory 依存。`main` を参照し lockfile で commit 固定 |
+| 配備済み外部 Skill | `.agents/skills/` 配下 | GitHub Copilot が発見・ロードする Skill | APM が生成（手動編集禁止） |
 | 常時ロード instructions | `.github/copilot-instructions.md` | プロジェクト概要・統制ルール・Skill 一覧 | 手動編集 |
-| APM マニフェスト | リポジトリ直下の apm.yml | 依存宣言・配備ターゲット定義 | 手動編集 |
-| APM ロックファイル | リポジトリ直下の apm.lock.yaml | 解決済みコミットとファイルハッシュの記録 | APM が生成 |
+| APM マニフェスト | リポジトリ直下の `apm.yml` | 依存宣言・GitHub Copilot target | 手動編集 |
+| APM ロックファイル | リポジトリ直下の `apm.lock.yaml` | 解決済みコミットとファイルハッシュの記録 | APM が生成 |
 
 ## Skill の分類
 
@@ -70,12 +73,15 @@ Skill は以下の 2 側面で分類する。
 - 「確認済み」ラベル（タスクファイル方式では `verified` ステータス）は、`user-story-quality-check` Skill のチェックフローをすべて完遂し、構造化コメントを証跡として記録した場合にのみ付与できる
 - 証跡（構造化コメント）が存在しない「確認済み」は無効とみなし、ユーザーはラベルを引きはがすことができる
 
-## APM による管理ルール
+## Agent Plugin / APM による管理ルール
 
-- ローカル Skill の追加・変更は `.apm/skills/` 配下でのみ行い、変更後に APM の install を実行して `.agents/skills/` へ再配備する
-- `.agents/skills/` 配下の直接編集を禁止する（APM の audit で検出される）
-- 外部依存（microsoft/azure-skills 等）はコミット SHA で固定し、更新は明示的な操作でのみ行う
-- 配備ターゲットは apm.yml の targets で宣言する（copilot および agent-skills）
+- ローカル Skill の追加・変更は `plugins/what-number/skills/` 配下で行い、Agent Plugin の形式を維持する
+- ローカル Plugin を変更した場合は `plugin.json` と marketplace entry の version を一致させる
+- `.github/copilot/settings.json` はローカル marketplace と Plugin を GitHub Copilot の既定として有効にする
+- 外部 Azure Skill は APM で個別に管理し、`main` の最新 commit を `apm.lock.yaml` に固定する。更新時は `apm update` を実行する
+- Azure repository root の Agent Plugin は MCP 等も含むため依存にせず、必要な Skill subdirectory のみを列挙する。新しい upstream Skill を追加する場合は `apm.yml` に依存を追加する
+- APM の target は `apm.yml` で `copilot` のみに限定する
+- `.agents/skills/` 配下は APM が配備する外部 Skill の出力先であり、直接編集しない
 
 ## Skill 記述の規約
 
@@ -83,11 +89,9 @@ Skill は以下の 2 側面で分類する。
 - 本文は簡潔に保ち、詳細は正本ドキュメントへの参照で示す
 - 他の Skill と重複する知識は記述せず、Skill 名で相互参照する
 
-## エージェント別の発見パス
+## 発見・配備先
 
 | エージェント | 発見パス | 備考 |
 |---|---|---|
-| GitHub Copilot（CLI / Coding Agent / IDE） | `.agents/skills/` および `.github/skills/` | instructions も読む |
-| OpenAI Codex | `.agents/skills/` | instructions 機構は持たない |
-| Claude Code | `.claude/skills/` および `.agents/skills/` | 必要に応じて claude ターゲットを追加可能 |
-| Cursor / Gemini CLI / その他 | `.agents/skills/` | Agent Skills 標準準拠 |
+| GitHub Copilot CLI / cloud agent | `what-number` Plugin と `.agents/skills/` | Repository defaults が Plugin を有効化 |
+| VS Code | `what-number` Plugin と `.agents/skills/` | repository marketplace から Plugin をインストール |
