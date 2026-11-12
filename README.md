@@ -210,7 +210,7 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 |---|---|---|
 | `AZURE_DEPLOY_CLIENT_ID` | Azure デプロイ用 OIDC アプリ登録のクライアント ID | `00000000-0000-...` |
 | `AZURE_ARTIFACTS_CLIENT_ID` | Azure Artifacts 専用 OIDC アプリのクライアント ID | `00000000-0000-...` |
-| `AZURE_TENANT_ID` | 両方の OIDC アプリが属するテナント ID。`azure/login@v2` のサービスプリンシパル認証で必須 | `00000000-0000-...` |
+| `AZURE_TENANT_ID` | 両方の OIDC アプリが属するテナント ID。`azure/login@v3` のサービスプリンシパル認証で必須 | `00000000-0000-...` |
 | `AZURE_SUBSCRIPTION_ID` | サブスクリプション ID | `00000000-0000-...` |
 | `AZURE_RESOURCE_GROUP` | 新規作成するリソースグループ名 | `rg-quiz-app` |
 | `AZURE_LOCATION` | リージョン | `japaneast` |

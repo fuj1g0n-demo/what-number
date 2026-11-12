@@ -27,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -38,7 +38,7 @@ jobs:
       # PR の head コミットの Gradle 依存グラフを生成して GitHub へ送信する。
       # これにより直後の Dependency Review が base との差分を解決できる。
       - name: Generate and submit dependency graph
-        uses: gradle/actions/dependency-submission@v4
+        uses: gradle/actions/dependency-submission@v6
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v4
