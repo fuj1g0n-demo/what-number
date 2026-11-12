@@ -182,7 +182,7 @@ jobs:
       # 自前で sticky コメントとして投稿する。
       - name: Comment a link to this PR's code scanning results
         if: ${{ github.event.pull_request.number }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           SARIF: ${{ steps.anchor.outputs.sarif }}
         with:
@@ -488,7 +488,7 @@ jobs:
 
       - name: Comment PR with preview URL and E2E result
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
         with:
@@ -600,7 +600,7 @@ jobs:
 
       - name: Comment PR with preview URL and E2E result
         if: always()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           E2E_OUTCOME: ${{ steps.e2e.outcome }}
         with:

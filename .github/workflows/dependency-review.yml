@@ -41,7 +41,7 @@ jobs:
         uses: gradle/actions/dependency-submission@v6
 
       - name: Dependency Review
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           # 中等度 (moderate) 以上の脆弱性が新規に持ち込まれた場合に失敗させる
           fail-on-severity: moderate
