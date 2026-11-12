@@ -4,8 +4,8 @@ name: CD (Merge) - Staging Deploy
 # デプロイ先: ステージング環境（リリース時に本番 prod へ展開する想定）
 #   - Azure Container Apps (staging)
 #   - Azure App Service   (staging)
-# 成果物   : 本プロジェクトの Java 成果物 (bootJar) を Azure DevOps の
-#            Azure Artifacts / GitHub Packages (Maven フィード) へ発行する
+# 成果物   : 本プロジェクトの Java 成果物 (bootJar) を Azure Artifacts /
+#            GitHub Packages (Maven フィード) へ発行する
 # 構成 (job DAG):
 #   build-jar  ───────────────────────────────→ deploy-appservice
 #   build-image ─→ image-security-scan ─→ deploy-aca
@@ -34,7 +34,7 @@ env:
   APP_SERVICE_LOCATION: ${{ vars.APP_SERVICE_LOCATION || vars.AZURE_LOCATION }}
   APP_SERVICE_PLAN_SKU: ${{ vars.APP_SERVICE_PLAN_SKU || 'B1' }}
   IMAGE_REPO: quiz-app
-  # Azure DevOps Artifacts
+  # Azure Artifacts
   AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
   AZURE_DEVOPS_PROJECT: ${{ vars.AZURE_DEVOPS_PROJECT }}
   AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
@@ -72,30 +72,28 @@ jobs:
           path: app/build/libs/*.jar
           if-no-files-found: error
 
-      - name: Ensure Azure Artifacts feed exists (best-effort)
-        env:
-          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
+      - name: Azure Login for Azure Artifacts (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Get Azure DevOps access token
         run: |
-          # フィードが無ければ作成する。既存(409)や権限不足(403)でも publish は
-          # 既存フィードに対して動作するため、ここでは失敗で停止させない。
-          # プロジェクトスコープのフィードのため URL に project セグメントを含める。
-          code=$(curl -s -o /tmp/feed.json -w '%{http_code}' \
-            -u ":${AZURE_DEVOPS_PAT}" \
-            -H "Content-Type: application/json" \
-            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_apis/packaging/feeds?api-version=7.1-preview.1" \
-            -d "{\"name\":\"${AZURE_ARTIFACTS_FEED}\"}" || echo "000")
-          echo "feed ensure HTTP ${code}"
-          case "$code" in
-            201) echo "フィード '${AZURE_ARTIFACTS_FEED}' を新規作成しました。" ;;
-            409) echo "フィード '${AZURE_ARTIFACTS_FEED}' は既存です。" ;;
-            *)   echo "フィード作成はスキップ（既存または作成権限不足）。既存フィードへ publish します。" ;;
-          esac
+          set -euo pipefail
+          ACCESS_TOKEN=$(az account get-access-token \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken \
+            --output tsv)
+          test -n "$ACCESS_TOKEN"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "AZURE_ARTIFACTS_TOKEN=$ACCESS_TOKEN" >> "$GITHUB_ENV"
 
       - name: Publish jar to Azure Artifacts (Maven)
         env:
           AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
           AZURE_ARTIFACTS_USER: AzureDevOps
-          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           # バージョンは gradle.properties を単一正本とする。-SNAPSHOT を外した
@@ -115,7 +113,7 @@ jobs:
         env:
           GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           # バージョンは gradle.properties を単一正本とする（上と同じ算出）。
@@ -142,7 +140,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -175,27 +173,24 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Download Defender for Cloud CLI
         run: |
-          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+          curl -fL -o defender "https://cli.dfd.security.azure.com/public/v2/latest/Defender_linux-x64"
           chmod +x defender
+          ./defender --version
 
       - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
-        env:
-          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
-          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
-          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CLIENT_SECRET }}
         run: |
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          ./defender scan image "$IMAGE" -o defender-mdvm.sarif
           # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
-          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json -o sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
       # Dockerfile の該当行へ anchor し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
@@ -229,7 +224,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -321,7 +316,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 

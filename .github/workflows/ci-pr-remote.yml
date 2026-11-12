@@ -6,7 +6,7 @@ name: CI (PR) - Remote Preview Deploy & E2E
 #   build-image ─→ image-security-scan ─→ deploy-preview-aca        ─→ e2e-aca
 #   （PR クローズ時は cleanup-preview が両プレビュー環境を削除）
 #
-# - build-jar  : bootJar をビルドし Maven フィード（Azure Artifacts / GitHub Packages）へ publish
+# - build-jar  : bootJar をビルドし GitHub Packages へ publish + デプロイ用に artifact 化
 # - build-image: Dockerfile から ACR イメージをビルドして ACR へ push（build=publish）
 # - image-security-scan: 公開済みイメージを MDVM でスキャンし Dockerfile 行へ remap（ACA デプロイのゲート）
 # - deploy-*   : スキャン済みイメージ / publish 済み jar をプレビュー環境へデプロイ
@@ -36,13 +36,9 @@ env:
   APP_SERVICE_PLAN: ${{ vars.APP_SERVICE_PLAN }}
   APP_SERVICE_WEBAPP_PREFIX: ${{ vars.APP_SERVICE_WEBAPP_PREFIX }}
   IMAGE_REPO: quiz-app
-  AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
-  AZURE_DEVOPS_PROJECT: ${{ vars.AZURE_DEVOPS_PROJECT }}
-  AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
-
 jobs:
   # ===========================================================================
-  # build-jar: bootJar をビルド -> Maven フィードへ publish + デプロイ用に artifact 化
+  # build-jar: bootJar をビルド -> GitHub Packages へ publish + デプロイ用に artifact 化
   # ===========================================================================
   build-jar:
     if: github.event.action != 'closed'
@@ -75,44 +71,11 @@ jobs:
           path: app/build/libs/*.jar
           if-no-files-found: error
 
-      - name: Ensure Azure Artifacts feed exists (best-effort)
-        env:
-          AZURE_DEVOPS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
-        run: |
-          # フィードが無ければ作成する。既存(409)や権限不足(403)でも publish は
-          # 既存フィードに対して動作するため、ここでは失敗で停止させない。
-          code=$(curl -s -o /tmp/feed.json -w '%{http_code}' \
-            -u ":${AZURE_DEVOPS_PAT}" \
-            -H "Content-Type: application/json" \
-            -X POST "https://feeds.dev.azure.com/${AZURE_DEVOPS_ORG}/${AZURE_DEVOPS_PROJECT}/_apis/packaging/feeds?api-version=7.1-preview.1" \
-            -d "{\"name\":\"${AZURE_ARTIFACTS_FEED}\"}" || echo "000")
-          echo "feed ensure HTTP ${code}"
-
-      - name: Publish jar to Azure Artifacts (Maven)
-        env:
-          AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
-          AZURE_ARTIFACTS_USER: AzureDevOps
-          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
-        run: |
-          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          # バージョンは gradle.properties を単一正本とし、-SNAPSHOT を外した基底に
-          # pr 番号 + short-sha を付与してプレビュー成果物を一意化する。
-          BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
-          ARTIFACT_VERSION="${BASE_VERSION}-pr${PR_NUM}-${SHORT_SHA}"
-          echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
-          ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository -PartifactVersion="${ARTIFACT_VERSION}" --no-daemon
-          {
-            echo "## Java 成果物の発行 (Azure Artifacts)"
-            echo ""
-            echo "- フィード: \`${AZURE_ARTIFACTS_FEED}\` (org: ${AZURE_DEVOPS_ORG} / project: ${AZURE_DEVOPS_PROJECT})"
-            echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
-          } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Publish jar to GitHub Packages (Maven)
         env:
           GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
@@ -141,7 +104,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -177,27 +140,24 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Download Defender for Cloud CLI
         run: |
-          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+          curl -fL -o defender "https://cli.dfd.security.azure.com/public/v2/latest/Defender_linux-x64"
           chmod +x defender
+          ./defender --version
 
       - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
-        env:
-          DEFENDER_TENANT_ID: ${{ secrets.DEFENDER_TENANT_ID }}
-          DEFENDER_CLIENT_ID: ${{ secrets.DEFENDER_CLIENT_ID }}
-          DEFENDER_CLIENT_SECRET: ${{ secrets.DEFENDER_CLIENT_SECRET }}
         run: |
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          ./defender scan image "$IMAGE" -o defender-mdvm.sarif
           # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
-          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json -o sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
       # Dockerfile の該当行へ anchor し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
@@ -301,7 +261,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -395,7 +355,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -719,7 +679,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 

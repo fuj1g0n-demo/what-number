@@ -22,8 +22,8 @@ name: CD (Release)
 # （承認者が手動で実施する想定）。成果物（Maven / コンテナイメージ）の
 # 発行・タグ・リリースノートのみを行う。
 #
-# 注意 : main がブランチ保護で直接 push を禁止している場合、リリースボット
-#        （または専用 PAT）に保護のバイパスを許可する必要がある。
+# 注意 : main がブランチ保護で直接 push を禁止している場合、GitHub Actions
+#        アプリに保護のバイパスを許可する必要がある。
 # =============================================================================
 
 on:
@@ -120,11 +120,28 @@ jobs:
           git tag -a "v${RELEASE_VERSION}" -m "Release v${RELEASE_VERSION}"
           echo "Tagged v${RELEASE_VERSION} at $(git rev-parse --short HEAD)"
 
+      - name: Azure Login for Azure Artifacts (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_ARTIFACTS_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - name: Get Azure DevOps access token
+        run: |
+          set -euo pipefail
+          ACCESS_TOKEN=$(az account get-access-token \
+            --resource 499b84ac-1321-427f-aa17-267ca6975798 \
+            --query accessToken \
+            --output tsv)
+          test -n "$ACCESS_TOKEN"
+          echo "::add-mask::$ACCESS_TOKEN"
+          echo "AZURE_ARTIFACTS_TOKEN=$ACCESS_TOKEN" >> "$GITHUB_ENV"
+
       - name: Publish jar to Azure Artifacts (Maven)
         env:
           AZURE_ARTIFACTS_FEED_URL: https://pkgs.dev.azure.com/${{ vars.AZURE_DEVOPS_ORG }}/${{ vars.AZURE_DEVOPS_PROJECT }}/_packaging/${{ vars.AZURE_ARTIFACTS_FEED }}/maven/v1
           AZURE_ARTIFACTS_USER: AzureDevOps
-          AZURE_ARTIFACTS_PAT: ${{ secrets.AZURE_DEVOPS_PAT }}
         run: |
           echo "Publishing com.example:what-number:${RELEASE_VERSION} to Azure Artifacts"
           ./gradlew :app:publishBootAppPublicationToAzureArtifactsRepository \
@@ -139,7 +156,7 @@ jobs:
         env:
           GITHUB_PACKAGES_URL: https://maven.pkg.github.com/${{ github.repository }}
           GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           echo "Publishing com.example:what-number:${RELEASE_VERSION} to GitHub Packages"
           ./gradlew :app:publishBootAppPublicationToGithubPackagesRepository \
@@ -153,7 +170,7 @@ jobs:
       - name: Azure Login (OIDC)
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
@@ -185,7 +202,7 @@ jobs:
 
       - name: Create GitHub Release with auto-generated notes
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           JAR=$(ls app/build/libs/*.jar | grep -v 'plain')
