@@ -179,17 +179,18 @@ jobs:
 
       - name: Download Defender for Cloud CLI
         run: |
-          curl -L -o defender "https://aka.ms/defender-cli_linux-x64"
+          curl -fL -o defender "https://cli.dfd.security.azure.com/public/v2/latest/Defender_linux-x64"
           chmod +x defender
+          ./defender --version
 
       - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
         run: |
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
-          ./defender scan image "$IMAGE" --defender-output defender-mdvm.sarif
+          ./defender scan image "$IMAGE" -o defender-mdvm.sarif
           # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
-          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json --output sbom.json
+          ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json -o sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
       # Dockerfile の該当行へ anchor し、CodeQL と同様に PR インライン注釈／差分行ゲートを効かせる。
