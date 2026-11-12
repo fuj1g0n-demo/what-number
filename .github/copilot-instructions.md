@@ -6,6 +6,7 @@
 
 - 技術スタック: Java 21 / Spring Boot 3.4 / Thymeleaf（SSR） / Bootstrap 5（CDN） / Gradle（Kotlin DSL）
 - 詳細な技術選定と根拠: `docs/design/tech-stack.md`
+- 開発方針（ウォーターフォール制約下でのアジャイル実践導入）: `docs/design/hybrid-development-policy.md`
 
 ## Skill 中心の知識体系
 
