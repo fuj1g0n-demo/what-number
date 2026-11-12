@@ -186,8 +186,8 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 >
 > リリースボットのコミットには `[skip ci]` を付与しているため、これらの push で `cd-merge.yml` は起動しません。
 >
-> 注意: `main` がブランチ保護で直接 push を禁止している場合は、リリース実行者（GitHub Actions ボットまたは
-> 専用 PAT）に保護のバイパスを許可してください。
+> `cd-release.yml` は `main` から実行してください。Azure Artifacts 用 OIDC 資格情報は `main` のみを信頼します。
+> ブランチ保護で push を禁止している場合は、GitHub Actions アプリに保護のバイパスを許可してください。
 
 ### セットアップ手順
 
@@ -195,15 +195,21 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
    **OIDC フェデレーション資格情報**を構成する。
    サービスプリンシパルには、初回の `infra-bootstrap` 実行のために対象サブスクリプション/リソースグループへ
    ロール割り当て権限（`Owner` もしくは `Contributor` + `User Access Administrator`）を付与する。
-2. リポジトリ → **Settings → Secrets and variables → Actions → Variables** に以下を登録する。
-3. **`infra-bootstrap.yml` を手動実行**して共有インフラ（新規リソースグループ含む）を作成する。
-4. 以後、PR を作成すると `ci-pr-remote.yml` が自動的にプレビュー環境をデプロイし、E2E を実行する。
+2. Azure Artifacts 発行専用の Entra アプリ登録を作成し、GitHub Actions 用 OIDC フェデレーション資格情報を追加する。Issuer は `https://token.actions.githubusercontent.com`、Audience は `api://AzureADTokenExchange`、Subject は次の値にする。
+   `repo:fuj1g0n-demo/what-number:ref:refs/heads/main`
+   このアプリには Azure サブスクリプションのロールを割り当てない。
+3. [専用アプリのサービス プリンシパルを Azure DevOps 組織に追加](https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/service-principal-managed-identity)し、`what-number` プロジェクトに割り当てる。追加時には Microsoft Entra の **Enterprise applications** にあるサービス プリンシパルの Object ID を使う。フィードを作成して、そのサービス プリンシパルにフィードの **Contributor** 権限だけを付与する。
+4. Microsoft Defender for Cloud の [GitHub connector を構成](https://learn.microsoft.com/azure/defender-for-cloud/quickstart-onboard-github)する。Defender CLI の image scan はこの connector で認証する。
+5. リポジトリ → **Settings → Secrets and variables → Actions → Variables** に以下を登録する。
+6. **`infra-bootstrap.yml` を手動実行**して共有インフラ（新規リソースグループ含む）を作成する。
+7. 以後、PR を作成すると `ci-pr-remote.yml` が自動的にプレビュー環境をデプロイし、E2E を実行する。
 
 ### 必要な GitHub Actions Variables
 
 | 変数名 | 説明 | 例 |
 |---|---|---|
 | `AZURE_CLIENT_ID` | OIDC 用アプリ登録のクライアント ID | `00000000-0000-...` |
+| `AZURE_ARTIFACTS_CLIENT_ID` | Azure Artifacts 専用 OIDC アプリのクライアント ID | `00000000-0000-...` |
 | `AZURE_TENANT_ID` | テナント ID | `00000000-0000-...` |
 | `AZURE_SUBSCRIPTION_ID` | サブスクリプション ID | `00000000-0000-...` |
 | `AZURE_RESOURCE_GROUP` | 新規作成するリソースグループ名 | `rg-quiz-app` |
@@ -227,6 +233,4 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 
 ### 必要な GitHub Actions Secrets
 
-| シークレット名 | 説明 |
-|---|---|
-| `AZURE_DEVOPS_PAT` | Azure DevOps の Personal Access Token（Azure Artifacts の Read & Write スコープ）。`cd-merge.yml` の成果物発行で使用 |
+このリポジトリの workflow は Actions secrets を参照しません。GitHub Actions が各 run に発行する `GITHUB_TOKEN` は、workflow の `permissions` で許可した GitHub 操作にだけ使います。

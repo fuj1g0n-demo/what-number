@@ -127,8 +127,8 @@ tasks.named("check") {
 //   - バージョンは CI から -PartifactVersion で上書き可能（既定は project.version）
 //   - 接続情報は環境変数で注入（CI 専用。ローカルの通常ビルドには影響しない）
 //       AZURE_ARTIFACTS_FEED_URL : フィードの Maven エンドポイント URL
-//       AZURE_ARTIFACTS_USER     : 任意のユーザー名（PAT 使用時は値は問われない）
-//       AZURE_ARTIFACTS_PAT      : Azure DevOps Personal Access Token
+//       AZURE_ARTIFACTS_USER     : 任意のユーザー名
+//       AZURE_ARTIFACTS_TOKEN    : Azure DevOps 用の短命アクセストークン
 // ---------------------------------------------------------------------------
 publishing {
     publications {
@@ -145,7 +145,7 @@ publishing {
             url = uri(providers.environmentVariable("AZURE_ARTIFACTS_FEED_URL").orElse("").get())
             credentials {
                 username = providers.environmentVariable("AZURE_ARTIFACTS_USER").orElse("AzureDevOps").get()
-                password = providers.environmentVariable("AZURE_ARTIFACTS_PAT").orElse("").get()
+                password = providers.environmentVariable("AZURE_ARTIFACTS_TOKEN").orElse("").get()
             }
         }
         // GitHub Packages (Maven レジストリ)
