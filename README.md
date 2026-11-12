@@ -196,9 +196,9 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
    初回の `infra-bootstrap` 実行には、対象サブスクリプションまたはリソースグループのロール割り当て権限が必要。
    `Owner` または `Contributor` と `User Access Administrator` を付与する。
 2. Azure Artifacts 発行専用の Entra アプリ登録を作成し、GitHub Actions 用 OIDC フェデレーション資格情報を追加する。Issuer は `https://token.actions.githubusercontent.com`、Audience は `api://AzureADTokenExchange`、Subject は次の値にする。
-   `repo:fuj1g0n-demo/what-number:ref:refs/heads/main`
+   `repo:fuj1g0n-demo@256320378/what-number@1167463052:ref:refs/heads/main`
    このアプリには Azure サブスクリプションのロールを割り当てない。
-3. [専用アプリのサービス プリンシパルを Azure DevOps 組織に追加](https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/service-principal-managed-identity)し、`what-number` プロジェクトに割り当てる。追加時には Microsoft Entra の **Enterprise applications** にあるサービス プリンシパルの Object ID を使う。フィードを作成して、そのサービス プリンシパルにフィードの **Contributor** 権限だけを付与する。
+3. [専用アプリのサービス プリンシパルを Azure DevOps 組織に追加](https://learn.microsoft.com/azure/devops/integrate/get-started/authentication/service-principal-managed-identity)し、無料の **Stakeholder** access level を割り当てる。`what-number` プロジェクトの **Readers** グループに加え、フィードを作成して、そのサービス プリンシパルにフィードの **Contributor** 権限だけを付与する。追加時には Microsoft Entra の **Enterprise applications** にあるサービス プリンシパルの Object ID を使う。
 4. Microsoft Defender for Cloud の [GitHub connector を構成](https://learn.microsoft.com/azure/defender-for-cloud/quickstart-onboard-github)する。Defender CLI の image scan はこの connector で認証する。
 5. リポジトリ → **Settings → Secrets and variables → Actions → Variables** に以下を登録する。
 6. **`infra-bootstrap.yml` を手動実行**して共有インフラ（新規リソースグループ含む）を作成する。
