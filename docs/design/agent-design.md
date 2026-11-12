@@ -3,15 +3,15 @@
 ## 概要
 
 本ドキュメントは、GitHub Copilot 向けのリポジトリ設定の設計を定義する。
-手順的知識を **Agent Skill** として部品化し、ローカル Skill は **Agent Plugin** 形式、
-外部 Skill は **APM（Agent Package Manager）** で管理する。
+手順的知識を **Agent Skill** として部品化し、ローカル Skill と外部 Azure Skill を
+**Agent Plugin** として repository marketplace から GitHub Copilot に提供する。
 
 ## 設計原則
 
 1. **常時ロードと on-demand の分離**: エージェントが常に必要とする事実（プロジェクト概要、統制ルール）のみを常時ロードされる instructions に置き、手順的知識はトリガー時にのみロードされる Skill に置く
 2. **ドキュメント正本主義**: `docs/specs/`・`docs/design/`・README が知識の正本であり、Skill は「いつ・どのドキュメントを読むか」の導線と実行手順のみを持つ。内容の複製によるドリフトを禁止する
 3. **標準形式**: ローカル Skill は Agent Plugins 1.0 と Agent Skills 標準（SKILL.md 形式）に準拠する
-4. **限定した配備先**: APM の target は GitHub Copilot のみとし、外部依存の解決結果はロックファイルで固定する
+4. **外部依存の固定**: remote plugin は upstream の full commit SHA と plugin version を marketplace entry に記録する
 
 ## 構成要素と配置
 
@@ -19,13 +19,10 @@
 |---|---|---|---|
 | ローカル Skill（ソース） | `plugins/what-number/skills/` 配下 | 本リポジトリ固有の手順的知識 | Agent Plugin の一部として手動編集 |
 | ローカル Agent Plugin | `plugins/what-number/` | ローカル Skill を束ねる Agent Plugins 1.0 パッケージ | repository marketplace で配布 |
-| Plugin marketplace | `.github/plugin/marketplace.json` | ローカル Plugin の catalog | GitHub Copilot CLI / VS Code / cloud agent が利用 |
+| Plugin marketplace | `.github/plugin/marketplace.json` | ローカルおよび remote Plugin の catalog | GitHub Copilot が利用 |
 | Copilot Plugin defaults | `.github/copilot/settings.json` | marketplace と既定 Plugin を共有 | 手動編集 |
-| 外部 Skill | Azure skills の各 `skills/<name>/` | Azure 操作等の汎用 Skill | APM の個別 subdirectory 依存。`main` を参照し lockfile で commit 固定 |
-| 配備済み外部 Skill | `.agents/skills/` 配下 | GitHub Copilot が発見・ロードする Skill | APM が生成（手動編集禁止） |
+| 外部 Azure Plugin | `microsoft/azure-skills` の `.github/plugins/azure-skills/` | Azure Skill、Azure MCP、telemetry hooks | Marketplace entry に upstream ref、full commit SHA、manifest version を記録 |
 | 常時ロード instructions | `.github/copilot-instructions.md` | プロジェクト概要・統制ルール・Skill 一覧 | 手動編集 |
-| APM マニフェスト | リポジトリ直下の `apm.yml` | 依存宣言・GitHub Copilot target | 手動編集 |
-| APM ロックファイル | リポジトリ直下の `apm.lock.yaml` | 解決済みコミットとファイルハッシュの記録 | APM が生成 |
 
 ## Skill の分類
 
@@ -73,15 +70,16 @@ Skill は以下の 2 側面で分類する。
 - 「確認済み」ラベル（タスクファイル方式では `verified` ステータス）は、`user-story-quality-check` Skill のチェックフローをすべて完遂し、構造化コメントを証跡として記録した場合にのみ付与できる
 - 証跡（構造化コメント）が存在しない「確認済み」は無効とみなし、ユーザーはラベルを引きはがすことができる
 
-## Agent Plugin / APM による管理ルール
+## Agent Plugin による管理ルール
 
 - ローカル Skill の追加・変更は `plugins/what-number/skills/` 配下で行い、Agent Plugin の形式を維持する
 - ローカル Plugin を変更した場合は `plugin.json` と marketplace entry の version を一致させる
 - `.github/copilot/settings.json` はローカル marketplace と Plugin を GitHub Copilot の既定として有効にする
-- 外部 Azure Skill は APM で個別に管理し、`main` の最新 commit を `apm.lock.yaml` に固定する。更新時は `apm update` を実行する
-- Azure repository root の Agent Plugin は MCP 等も含むため依存にせず、必要な Skill subdirectory のみを列挙する。新しい upstream Skill を追加する場合は `apm.yml` に依存を追加する
-- APM の target は `apm.yml` で `copilot` のみに限定する
-- `.agents/skills/` 配下は APM が配備する外部 Skill の出力先であり、直接編集しない
+- 外部 Azure Plugin は `.github/plugin/marketplace.json` で remote source として登録し、upstream `main` の full commit SHA に固定する
+- remote entry の `name` と `version` は、固定 commit に含まれる `.github/plugins/azure-skills/.plugin/plugin.json` と一致させる
+- Azure Plugin は Skill に加えて Azure MCP と telemetry hooks を提供する。Plugin のコンポーネント全体を取り込むことを前提とする
+- リモート依存の更新時は upstream `main` の最新 commit SHA と manifest version を確認し、marketplace entry を同時に更新する
+- Azure Plugin 側の telemetry hooks を使用するため、リポジトリ独自の Azure telemetry hook を重ねて登録しない
 
 ## Skill 記述の規約
 
@@ -93,5 +91,6 @@ Skill は以下の 2 側面で分類する。
 
 | エージェント | 発見パス | 備考 |
 |---|---|---|
-| GitHub Copilot CLI / cloud agent | `what-number` Plugin と `.agents/skills/` | Repository defaults が Plugin を有効化 |
-| VS Code | `what-number` Plugin と `.agents/skills/` | repository marketplace から Plugin をインストール |
+| GitHub Copilot cloud agent | `what-number` Plugin と remote `azure` Plugin | Repository defaults に設定。remote source 解決は未検証 |
+| GitHub Copilot CLI | `what-number` Plugin と remote `azure` Plugin | Remote entry は GitHub marketplace から解決。end-to-end は未検証 |
+| VS Code | `what-number` Plugin | Azure remote Plugin の repository defaults による有効化は未検証 |

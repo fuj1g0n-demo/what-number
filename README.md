@@ -74,24 +74,16 @@ Gradle マルチプロジェクト構成（モノレポ）を採用していま�
 ## AI エージェント向け設定（Skill 中心）
 
 AI コーディングエージェント向けの手順的知識は **Agent Skill** として部品化し、
-ローカル Skill は **Agent Plugin** 形式、外部 Skill は **APM（Agent Package Manager）** で管理しています。
+ローカル Skill と外部 Azure Skill は **Agent Plugin** として管理しています。
 設計の詳細は
 [docs/design/agent-design.md](docs/design/agent-design.md) を参照してください。
 
 - ローカル Skill のソース: `plugins/what-number/skills/`（Agent Plugins 1.0）
-- Plugin marketplace: `.github/plugin/marketplace.json`。`.github/copilot/settings.json` で GitHub Copilot の既定 Plugin として有効化
-- 外部 Skill: `microsoft/azure-skills` の各 `skills/<name>` を個別に APM dependency として管理（`main` を参照し、`apm.lock.yaml` で commit 固定）。Azure MCP server など Plugin の他コンポーネントは含めない
-- APM の配備対象: GitHub Copilot のみ。外部 Skill は `.agents/skills/` に配備
+- Plugin marketplace: `.github/plugin/marketplace.json`。`.github/copilot/settings.json` で marketplace と既定 Plugin を GitHub Copilot に設定
+- 外部 Azure Plugin: `microsoft/azure-skills` の `.github/plugins/azure-skills` を remote plugin として登録し、`main` の commit SHA と manifest version を marketplace に固定
+- Azure Plugin には Skill に加えて Azure MCP と telemetry hooks が含まれる。利用には Node.js 18 以上が必要で、Azure 操作には Azure CLI の認証が必要。telemetry は `AZURE_MCP_COLLECT_TELEMETRY=false` で無効化できる
 - ローカル Skill の追加・変更は Plugin の `skills/` 以下で行い、Plugin の version と marketplace の version を合わせる
-- Azure Skill dependency の再適用・更新:
-
-```bash
-# lockfile を使って dependency を再適用
-apm install
-
-# azure-skills の main を最新 commit に更新して lockfile を更新
-apm update
-```
+- Azure Plugin の更新時は upstream `main` の最新 commit SHA と `.plugin/plugin.json` の version を確認し、marketplace entry を同時に更新する
 
 ## コンテナ実行
 

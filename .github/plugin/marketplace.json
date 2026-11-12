@@ -13,6 +13,19 @@
       "description": "このリポジトリ固有の開発手順と実装規約を提供する。",
       "version": "1.0.0",
       "source": "./plugins/what-number"
+    },
+    {
+      "name": "azure",
+      "description": "Microsoft Azure skills and MCP tools for Azure resource management and deployments.",
+      "version": "1.2.122",
+      "homepage": "https://github.com/microsoft/azure-skills",
+      "source": {
+        "source": "github",
+        "repo": "microsoft/azure-skills",
+        "path": ".github/plugins/azure-skills",
+        "ref": "main",
+        "sha": "233c51fc11c73d459be46e099e417ebaf3d20a26"
+      }
     }
   ]
 }

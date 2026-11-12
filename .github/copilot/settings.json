@@ -8,6 +8,7 @@
     }
   },
   "enabledPlugins": {
-    "what-number@what-number": true
+    "what-number@what-number": true,
+    "azure@what-number": true
   }
 }
