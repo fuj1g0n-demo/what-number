@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "what-number": {
+      "source": {
+        "source": "github",
+        "repo": "fuj1g0n-demo/what-number"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "what-number@what-number": true,
+    "azure@what-number": true
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "what-number",
+  "version": "1.0.0",
+  "description": "このリポジトリ固有の開発手順と実装規約を提供する。",
+  "repository": "https://github.com/fuj1g0n-demo/what-number"
+}
