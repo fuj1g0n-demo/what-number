@@ -109,12 +109,61 @@ PR ごとに専用のプレビュー環境を **2 種類の Azure ホスティ�
 
 | ワークフロー | 種別 | トリガー | デプロイ先 | 内容 |
 |---|---|---|---|---|
-| `ci-pr-local.yml` | CI | PR (main): open / synchronize / reopen | なし（ローカル） | Build → Unit → Integration → System Test（ランナー内でローカル起動して検証） |
+| `ci-pr-local.yml` | CI | PR (main): open / synchronize / reopen | なし（ローカル） | Build の後に Unit / Integration / System Test を並行実行。System Test はランナー内でアプリを起動して検証 |
 | `ci-pr-remote.yml` | CI | PR (main): open / synchronize / reopen / close | PR 専用プレビュー環境（固有 URL） | PR ごとに **Container App**（コンテナ）と **App Service Web App**（Java SE 21 / bootJar）を並行作成 → 各固有 URL でデプロイ → E2E 実行 → URL を PR にコメント。クローズ時に両方を削除 |
-| `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts と GitHub Packages（Maven）へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ（リリース時に本番 prod へ展開する想定） |
-| `cd-release.yml` | CD | 手動（`workflow_dispatch`、版を手入力） | － | バージョンを確定（`-SNAPSHOT` を外す）→ ビルド/テスト → タグ付け → Maven 発行 → **ACR へコンテナイメージ発行** → GitHub Release（ノート自動生成）→ 次期開発版（`-SNAPSHOT`）へ戻す。ACA / App Service へのデプロイは行わない（承認者が手動実施） |
-| `infra-bootstrap.yml` | セットアップ | 手動（`workflow_dispatch`） | － | 新規リソースグループ・ACR・マネージド ID・ACA 環境・App Service プランを作成（初回 1 回のみ） |
+| `cd-merge.yml` | CD | push (main)（= マージ） / 手動 | ステージング環境 | bootJar を Azure Artifacts と GitHub Packages（Maven）へ発行し、**ACA** と **App Service** の 2 つのステージング環境へ並行デプロイ。各環境で HTTP 200 を確認 |
+| `cd-release.yml` | CD | 手動（`workflow_dispatch`、版を手入力） | － | バージョン検証とビルド・テスト後、リリースコミットにタグを付けて Maven / ACR へ発行し、GitHub Release を作成。その後、次期開発版へ戻すコミットを作成。ACA / App Service へはデプロイしない |
+| `infra-bootstrap.yml` | セットアップ | 手動（`workflow_dispatch`） | － | 初回セットアップ用にリソースグループ・ACR・マネージド ID・ACA 環境・App Service プランを作成 |
 | `ttl-cleanup.yml` | 運用 | 15 分毎 / 手動 | － | TTL 期限切れ（最終 push から 1 時間）のプレビュー環境（Container App / Web App）を削除 |
+| `dependency-submission.yml` | 依存関係 | push (main) / 手動 | － | Gradle の依存関係グラフを GitHub Dependency Graph へ送信 |
+| `dependency-review.yml` | 依存関係 | PR (main): open / synchronize / reopen | － | PR の head グラフを送信してから base との差分を確認し、中程度以上の脆弱性があれば失敗 |
+| `codeql.yml` | セキュリティ | push (main) / PR (main) / 毎週金曜 02:18 UTC | － | CodeQL で GitHub Actions と Java を解析。現在の Java `autobuild` 設定は Kotlin を解析しない |
+
+### ワークフローの関係
+
+PR のローカルテストと Azure プレビュー検証は別のワークフローで実行します。ローカル CI は build 後に3種類のテストを並列実行します。プレビュー CI は jar とコンテナイメージを別々に準備し、それぞれの環境にデプロイして E2E を実行します。
+
+```mermaid
+flowchart TD
+  PR[PR の作成・更新] --> LocalCI[ci-pr-local: build]
+  LocalCI --> Unit[Unit Test]
+  LocalCI --> Integration[Integration Test]
+  LocalCI --> LocalSystem[System Test]
+  PR --> Jar[bootJar の build]
+  PR --> Image[コンテナイメージの build]
+  Jar --> AppPreview[App Service プレビュー]
+  AppPreview --> AppE2E[App Service E2E]
+  Image --> Scan[Defender for Cloud の scan]
+  Scan --> ACAPreview[ACA プレビュー]
+  ACAPreview --> ACAE2E[ACA E2E]
+  PRClose[PR のクローズ] --> Cleanup[両プレビューを削除]
+  Main[main への push] --> StageJar[bootJar の発行]
+  StageJar --> StageApp[App Service staging]
+  Main --> StageImage[イメージの build]
+  StageImage --> StageScan[Defender scan]
+  StageScan --> StageACA[ACA staging]
+  Main --> Dependencies[依存関係グラフを送信]
+  PR --> DependencyReview[head グラフ送信後に dependency review]
+  Main --> CodeQL[CodeQL]
+  PR --> CodeQL
+  Schedule[毎週金曜] --> CodeQL
+```
+
+`cd-merge.yml` では jar とイメージを並行して作ります。App Service は jar を受け取り、ACA は Defender のスキャンに通ったイメージを受け取ります。スキャンが失敗すると ACA のデプロイへ進みません。
+
+`ci-pr-remote.yml` の各 E2E ジョブは、失敗してもスクリーンショットとテストレポートを Actions の成果物に保存し、対象環境の URL と結果を PR にコメントします。
+
+`dependency-submission.yml` は `main` の依存関係グラフを更新します。`dependency-review.yml` は PR の head グラフを送信してから base との差分を評価します。head グラフの送信がレビューより先に必要なため、両方を PR ワークフロー内で順に実行します。
+
+### ワークフローの設計上の理由
+
+- PR ごとのローカル CI は Azure に接続せず、アプリのテストを実行します。プレビュー CI は ACA と App Service のデプロイ設定を別々に検証します。
+- ACA のイメージスキャンは Defender for Cloud CLI で SARIF と CycloneDX SBOM を生成します。SBOM は OS と言語の識別に使います。`sarif-dockerfile-anchor` はイメージ参照で報告された脆弱性を Dockerfile の行に対応付け、Code Scanning で PR の差分に注釈します。
+- GitHub-hosted runner の Azure CLI ランタイム一覧が Java 21 を認識しない場合、ワークフローは Java 11 で Web App を作成し、`linux-fx-version` を Java 21 に設定します。この手順は作成時のランタイム指定に対する回避策です。
+- App Service プランは Web App がなくなると削除される場合があります。`cd-merge.yml` はデプロイ前にプランを確認し、存在しない場合は再作成します。
+- プレビュー環境には最後の PR 更新から1時間後の `TTLExpire` タグを付けます。`ttl-cleanup.yml` は15分ごとにタグを確認し、期限切れの Container App と Web App を削除します。PR のクローズ時は `ci-pr-remote.yml` が両方をすぐ削除します。
+- `infra-bootstrap.yml` は既存の ACR、マネージド ID、ACA 環境、App Service プランを再利用します。マネージド ID への ACR Pull ロール割り当てでは、Microsoft Entra ID への反映を待って10秒間隔で最大6回再試行します。
+- `cd-release.yml` はリリース版と次期開発版の2コミットを作成します。タグ `v<release_version>` はリリースコミットに付きます。次期開発版への更新コミットはその後に作成し、本番環境へのデプロイは行いません。
 
 ### PR ごとの URL の仕組み
 
@@ -132,7 +181,7 @@ App Service のデプロイスロットに相当する仕組みとして、PR �
 `main` への push（PR マージ）または手動実行で、以下を行います（リリース時に本番 prod へ展開する想定）。
 
 - **Java 成果物の発行**: `bootJar` を 2 つの Maven レジストリへ
-  `com.example:what-number:0.0.1-<short-sha>` として発行する。
+  `com.example:what-number:<base-version>-<short-sha>` として発行する。`<base-version>` は `gradle.properties` の `version` から `-SNAPSHOT` を外した値で、`<short-sha>` はコミット SHA の先頭 7 文字。
   - Azure DevOps の **Azure Artifacts**（project スコープフィード）
   - **GitHub Packages**（`maven.pkg.github.com/<owner>/<repo>`、`GITHUB_TOKEN` で認証）
 - **ステージングへの並行デプロイ**:
