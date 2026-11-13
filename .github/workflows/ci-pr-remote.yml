@@ -1,17 +1,5 @@
 name: CI (PR) - Remote Preview Deploy & E2E
 
-# トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン / クローズ）
-# パイプライン構成（job DAG）:
-#   build-jar  ──────────────────────────────→ deploy-preview-appservice ─→ e2e-appservice
-#   build-image ─→ image-security-scan ─→ deploy-preview-aca        ─→ e2e-aca
-#   （PR クローズ時は cleanup-preview が両プレビュー環境を削除）
-#
-# - build-jar  : bootJar をビルドし GitHub Packages へ publish + デプロイ用に artifact 化
-# - build-image: Dockerfile から ACR イメージをビルドして ACR へ push（build=publish）
-# - image-security-scan: 公開済みイメージを MDVM でスキャンし Dockerfile 行へ remap（ACA デプロイのゲート）
-# - deploy-*   : スキャン済みイメージ / publish 済み jar をプレビュー環境へデプロイ
-# - e2e-*      : 各プレビュー URL に対し E2E（System Test）を実行
-
 on:
   pull_request:
     branches:
@@ -37,9 +25,6 @@ env:
   APP_SERVICE_WEBAPP_PREFIX: ${{ vars.APP_SERVICE_WEBAPP_PREFIX }}
   IMAGE_REPO: quiz-app
 jobs:
-  # ===========================================================================
-  # build-jar: bootJar をビルド -> GitHub Packages へ publish + デプロイ用に artifact 化
-  # ===========================================================================
   build-jar:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
@@ -89,9 +74,6 @@ jobs:
             echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ===========================================================================
-  # build-image: Dockerfile から ACR イメージをビルドし ACR へ push（build=publish）
-  # ===========================================================================
   build-image:
     if: github.event.action != 'closed'
     runs-on: ubuntu-latest
@@ -117,10 +99,6 @@ jobs:
             --file Dockerfile \
             .
 
-  # ===========================================================================
-  # image-security-scan: 公開済みイメージを MDVM でスキャン -> Dockerfile 行へ remap -> SARIF 投入
-  #   （ACA デプロイのゲート。high/critical は code scanning の check 失敗として可視化）
-  # ===========================================================================
   image-security-scan:
     if: github.event.action != 'closed'
     needs: build-image
@@ -150,13 +128,13 @@ jobs:
           chmod +x defender
           ./defender --version
 
+      # CycloneDX SBOM は OS/言語の判別（purl）に使用する。
       - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
         run: |
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
           ./defender scan image "$IMAGE" -o defender-mdvm.sarif
-          # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
           ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json -o sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
@@ -245,9 +223,6 @@ jobs:
               });
             }
 
-  # ===========================================================================
-  # deploy-preview-aca: スキャン済みイメージを Azure Container Apps へデプロイ
-  # ===========================================================================
   deploy-preview-aca:
     if: github.event.action != 'closed'
     needs: image-security-scan
@@ -271,7 +246,6 @@ jobs:
           az extension add --name containerapp --upgrade --only-show-errors
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:pr-${PR_NUM}-${{ github.sha }}"
           UAMI_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query id -o tsv)
-          # 最後の push から 1 時間後を TTL とする（TTL Cleanup ワークフローが削除）
           TTL_EXPIRE=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
 
           if az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
@@ -299,7 +273,6 @@ jobs:
               --output none
           fi
 
-          # TTL タグを毎回更新（push のたびにリセット）
           APP_ID=$(az containerapp show -n "$APP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
           az tag update \
             --resource-id "$APP_ID" \
@@ -327,9 +300,6 @@ jobs:
           echo "Preview did not become ready in time."
           exit 1
 
-  # ===========================================================================
-  # deploy-preview-appservice: publish 済み bootJar を Azure App Service へデプロイ
-  # ===========================================================================
   deploy-preview-appservice:
     if: github.event.action != 'closed'
     needs: build-jar
@@ -359,22 +329,18 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # 古い az CLI のランタイムカタログでは Java 21 を直接指定できないため、
+      # Java 11 で作成後、カタログ検証を経ない linux-fx-version で Java 21 に切り替える。
+      # App Service は bootJar を app.jar にリネームして実行する。
       - name: Create or reuse preview web app and deploy jar
         id: deploy
         run: |
-          # 最後の push から 1 時間後を TTL とする（TTL Cleanup ワークフローが削除）
           TTL_EXPIRE=$(date -u -d '+1 hour' +%Y-%m-%dT%H:%M:%SZ)
 
           if az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
             echo "Reusing existing preview web app: $WEBAPP_NAME"
           else
             echo "Creating preview web app: $WEBAPP_NAME"
-            # GitHub ホストランナーの az CLI はランタイムカタログが古く
-            # （JAVA|11-java11 までしか持たない）、create 時に Java 21 を直接指定すると
-            # 「not supported」で弾かれる。そこでまず Java 21 を試し、失敗した場合は
-            # カタログに存在する Java 11 で作成してから linux-fx-version で Java 21 を
-            # 強制する（linux-fx-version は生のパススルーでカタログ検証されず、
-            # App Service プラットフォーム側は Java 21 を提供するため動作する）。
             if ! az webapp create \
                   --name "$WEBAPP_NAME" \
                   --resource-group "$RESOURCE_GROUP" \
@@ -395,7 +361,6 @@ jobs:
                 --runtime "JAVA|11-java11" \
                 --output none
             fi
-            # 実行ランタイムを Java 21 に強制する
             az webapp config set \
               --name "$WEBAPP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
@@ -403,7 +368,6 @@ jobs:
               --output none
           fi
 
-          # TTL タグを毎回更新（push のたびにリセット）
           APP_ID=$(az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
           az tag update \
             --resource-id "$APP_ID" \
@@ -411,7 +375,6 @@ jobs:
             --tags Environment=preview PullRequest="$PR_NUM" TTLExpire="$TTL_EXPIRE" \
             --output none
 
-          # bootJar をデプロイ（App Service が app.jar にリネームして実行）
           az webapp deploy \
             --name "$WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
@@ -439,9 +402,6 @@ jobs:
           echo "Preview did not become ready in time."
           exit 1
 
-  # ===========================================================================
-  # e2e-aca: ACA プレビュー URL に対し E2E（System Test）を実行
-  # ===========================================================================
   e2e-aca:
     if: github.event.action != 'closed'
     needs: deploy-preview-aca
@@ -551,9 +511,6 @@ jobs:
           echo "E2E tests failed against the Azure Container Apps preview environment."
           exit 1
 
-  # ===========================================================================
-  # e2e-appservice: App Service プレビュー URL に対し E2E（System Test）を実行
-  # ===========================================================================
   e2e-appservice:
     if: github.event.action != 'closed'
     needs: deploy-preview-appservice
@@ -663,9 +620,6 @@ jobs:
           echo "E2E tests failed against the Azure App Service preview environment."
           exit 1
 
-  # ===========================================================================
-  # cleanup-preview: PR クローズ時に両プレビュー環境を削除
-  # ===========================================================================
   cleanup-preview:
     if: github.event.action == 'closed'
     runs-on: ubuntu-latest

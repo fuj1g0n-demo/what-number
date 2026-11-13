@@ -1,7 +1,5 @@
 name: TTL Cleanup Preview Environments
 
-# TTLExpire タグが期限切れになったプレビュー用 Container App を定期削除する。
-
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -38,7 +36,6 @@ jobs:
 
           echo "Current time (UTC): $NOW"
 
-          # Environment=preview タグが付いた Container App のみ対象
           APPS=$(az containerapp list \
             --resource-group "$RESOURCE_GROUP" \
             --query "[?tags.Environment=='preview'].name" \
@@ -89,7 +86,6 @@ jobs:
 
           echo "Current time (UTC): $NOW"
 
-          # Environment=preview タグが付いた Web App のみ対象
           APPS=$(az webapp list \
             --resource-group "$RESOURCE_GROUP" \
             --query "[?tags.Environment=='preview'].name" \

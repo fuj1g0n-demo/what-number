@@ -190,32 +190,30 @@ Gradle マルチプロジェクト構成（モノレポ）を採用し、メイ�
 | 項目 | 選定 | 選定理由 |
 |---|---|---|
 | CI サービス | GitHub Actions | GitHub Flow との自然な統合、リポジトリ内で完結 |
-| CI パイプライン | PR 時に自動実行 | Unit Test → Integration Test → ビルド を自動実行 |
+| CI パイプライン | PR 時に自動実行 | ローカルのビルド・テストと、Azure プレビュー環境へのデプロイ・E2E を別ワークフローで検証 |
 | System Test 実行 | CI 上で実行 | Playwright のヘッドレスモードにより CI 上でも E2E テスト実行可能 |
 
 ### CI ワークフロー方針
 
-- PR 作成・更新時にすべての自動テスト（Unit / Integration / System）を実行
-- main ブランチへのマージ後にもテストを実行し、デプロイ可能状態を検証
+- PR 作成・更新時にローカル CI で `:app:assemble` と Unit / Integration / System Test を実行
+- PR ごとの ACA / App Service プレビュー環境で E2E を実行
+- main への push 時にステージングへデプロイし、各環境で HTTP 200 を確認
 - Gradle Wrapper を使用し、CI 環境でのビルド再現性を確保
-- メインアプリケーションのビルド・テスト（`:app:build`）と System Test（`:system-test:test`）は独立したステップとして実行する
-- System Test 実行前にアプリケーションの起動が完了していることを前提とする
+- `:app:assemble` と3種類のテストを別 job で実行し、テストは並列化する
+- ローカル System Test の前にアプリケーションを起動する。プレビュー環境の E2E はデプロイ後に実行する
 
-### テスト成果物（artifact）アップロード方針
+### プレビュー E2E の成果物アップロード方針
 
-PR 用 CI ワークフロー（`ci-pr-local.yml`）において、System Test 実行後に以下の成果物を PR ごとに artifact としてアップロードする:
+`ci-pr-remote.yml` は ACA と App Service の各 E2E job で、以下の成果物を Actions artifact としてアップロードする:
 
 | 成果物 | パス |
 |---|---|
 | E2E テストスクリーンショット | `system-test/build/screenshots/` |
-| テストレポート（JUnit XML） | `system-test/build/test-results/` |
-| テストレポート（Gradle HTML レポート） | `system-test/build/reports/tests/` |
+| Gradle HTML テストレポート | `system-test/build/reports/tests/test/` |
 
-**アップロードタイミング**: テストステップの実行後、成功・失敗を問わず**必ずアップロード**する。テストが失敗した場合でも成果物を取得できることを保証する。
+テストが成功しても失敗してもアップロード step を実行する。ファイルがある場合に保存し、該当ファイルがない場合は失敗させない。
 
-**位置づけ**: アップロードされた成果物は、PR レビュー時に以下の目的で利用する客観的な証跡として機能する:
-- 各画面が期待通りに表示されているかの視覚的な確認（スクリーンショット）
-- テスト実行結果の確認および回帰の検出（テストレポート）
+PR レビューではスクリーンショットで画面を確認し、HTML レポートで E2E の結果を調べる。
 
 ---
 
