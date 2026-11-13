@@ -1,22 +1,6 @@
 name: CD (Release)
 
-# =============================================================================
 # リリースワークフロー（Java/Gradle の SNAPSHOT 流儀に準拠した「2 コミット振り付け」）
-# -----------------------------------------------------------------------------
-# トリガー : 手動実行（workflow_dispatch）。リリース版と次期開発版を手入力する。
-# 行うこと :
-#   1. 入力検証（リリース版は -SNAPSHOT 無し / 次期開発版は -SNAPSHOT 付き / タグ未存在）
-#   2. gradle.properties の version をリリース版へ書き換え
-#   3. ビルド + テスト（Unit + Integration）でリリース品質をゲート
-#   4. リリースコミットを作成し、注釈付きタグ v<release> を「そのコミット」に付与
-#   5. Java 成果物（bootJar）を Maven レジストリへ発行（Azure Artifacts / GitHub Packages）
-#   6. コンテナイメージを ACR へ発行（az acr build。デプロイは行わず登録のみ）
-#   7. リリースコミットとタグを main へ push
-#   8. GitHub Release を作成（リリースノートは --generate-notes で自動生成、bootJar を添付）
-#   9. version を次期開発版（-SNAPSHOT 付き）へ戻すコミットを作成し main へ push
-#
-# 重要 : タグ v<release> は手順 4 の「リリースコミット」を指す。
-#        手順 9 の「次期開発版コミット」より前に確定させるため、タグずれは起きない。
 #
 # 本番（prod）への ACA / App Service デプロイは本ワークフローに含めない
 # （承認者が手動で実施する想定）。成果物（Maven / コンテナイメージ）の
@@ -24,7 +8,6 @@ name: CD (Release)
 #
 # 注意 : main がブランチ保護で直接 push を禁止している場合、GitHub Actions
 #        アプリに保護のバイパスを許可する必要がある。
-# =============================================================================
 
 on:
   workflow_dispatch:
@@ -68,22 +51,18 @@ jobs:
           echo "release_version  = ${RELEASE_VERSION}"
           echo "next_dev_version = ${NEXT_DEV_VERSION}"
 
-          # リリース版は SNAPSHOT を含んではならない
           if echo "${RELEASE_VERSION}" | grep -q 'SNAPSHOT'; then
             echo "::error::release_version に SNAPSHOT を含めることはできません: ${RELEASE_VERSION}"
             exit 1
           fi
-          # リリース版は X.Y.Z 形式（任意で -<qualifier> 可）であること
           if ! echo "${RELEASE_VERSION}" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'; then
             echo "::error::release_version の形式が不正です（例: 1.0.0）: ${RELEASE_VERSION}"
             exit 1
           fi
-          # 次期開発版は -SNAPSHOT で終わること
           if ! echo "${NEXT_DEV_VERSION}" | grep -qE -- '-SNAPSHOT$'; then
             echo "::error::next_dev_version は -SNAPSHOT で終わる必要があります: ${NEXT_DEV_VERSION}"
             exit 1
           fi
-          # 同名タグが既に存在していないこと
           if git ls-remote --exit-code --tags origin "refs/tags/v${RELEASE_VERSION}" >/dev/null 2>&1; then
             echo "::error::タグ v${RELEASE_VERSION} は既に存在します"
             exit 1

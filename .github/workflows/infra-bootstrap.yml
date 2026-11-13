@@ -80,12 +80,12 @@ jobs:
             echo "Managed identity '$ACR_PULL_IDENTITY_NAME' created."
           fi
 
+      # AAD への反映を待ってロール割り当てをリトライする。
       - name: Grant AcrPull to managed identity
         run: |
           ACR_ID=$(az acr show --name "$ACR_NAME" --query id -o tsv)
           PRINCIPAL_ID=$(az identity show -g "$RESOURCE_GROUP" -n "$ACR_PULL_IDENTITY_NAME" --query principalId -o tsv)
 
-          # AAD 反映待ちのリトライ付きでロール割り当て（べき等）
           for i in $(seq 1 6); do
             if az role assignment create \
                  --assignee-object-id "$PRINCIPAL_ID" \

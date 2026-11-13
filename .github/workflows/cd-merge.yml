@@ -1,15 +1,5 @@
 name: CD (Merge) - Staging Deploy
 
-# トリガー : main への push（= PR マージ）／手動実行（workflow_dispatch）
-# デプロイ先: ステージング環境（リリース時に本番 prod へ展開する想定）
-#   - Azure Container Apps (staging)
-#   - Azure App Service   (staging)
-# 成果物   : 本プロジェクトの Java 成果物 (bootJar) を Azure Artifacts /
-#            GitHub Packages (Maven フィード) へ発行する
-# 構成 (job DAG):
-#   build-jar  ───────────────────────────────→ deploy-appservice
-#   build-image ─→ image-security-scan ─→ deploy-aca
-
 on:
   push:
     branches:
@@ -34,16 +24,11 @@ env:
   APP_SERVICE_LOCATION: ${{ vars.APP_SERVICE_LOCATION || vars.AZURE_LOCATION }}
   APP_SERVICE_PLAN_SKU: ${{ vars.APP_SERVICE_PLAN_SKU || 'B1' }}
   IMAGE_REPO: quiz-app
-  # Azure Artifacts
   AZURE_DEVOPS_ORG: ${{ vars.AZURE_DEVOPS_ORG }}
   AZURE_DEVOPS_PROJECT: ${{ vars.AZURE_DEVOPS_PROJECT }}
   AZURE_ARTIFACTS_FEED: ${{ vars.AZURE_ARTIFACTS_FEED }}
 
 jobs:
-  # ===========================================================================
-  # build-jar: bootJar をビルド -> Maven フィード（Azure Artifacts / GitHub Packages）へ発行
-  #            + deploy-appservice 用に jar を artifact アップロード
-  # ===========================================================================
   build-jar:
     runs-on: ubuntu-latest
     steps:
@@ -96,8 +81,6 @@ jobs:
           AZURE_ARTIFACTS_USER: AzureDevOps
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          # バージョンは gradle.properties を単一正本とする。-SNAPSHOT を外した
-          # 基底バージョンに short-sha を付与してステージング成果物を一意化する。
           BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
           ARTIFACT_VERSION="${BASE_VERSION}-${SHORT_SHA}"
           echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to Azure Artifacts feed '${AZURE_ARTIFACTS_FEED}'"
@@ -116,7 +99,6 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          # バージョンは gradle.properties を単一正本とする（上と同じ算出）。
           BASE_VERSION=$(grep -E '^version=' gradle.properties | head -n1 | cut -d= -f2 | sed 's/-SNAPSHOT$//')
           ARTIFACT_VERSION="${BASE_VERSION}-${SHORT_SHA}"
           echo "Publishing com.example:what-number:${ARTIFACT_VERSION} to GitHub Packages (${GITHUB_PACKAGES_URL})"
@@ -128,9 +110,6 @@ jobs:
             echo "- 座標: \`com.example:what-number:${ARTIFACT_VERSION}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ===========================================================================
-  # build-image: Dockerfile から ACR イメージをビルドし ACR へ push（build=publish）
-  # ===========================================================================
   build-image:
     runs-on: ubuntu-latest
     steps:
@@ -154,10 +133,6 @@ jobs:
             --file Dockerfile \
             .
 
-  # ===========================================================================
-  # image-security-scan: ACR へ publish 済みイメージを MDVM でスキャン -> Dockerfile 行へ remap -> SARIF 投入
-  #   （ACA デプロイのゲート。high/critical は code scanning の check 失敗として可視化）
-  # ===========================================================================
   image-security-scan:
     needs: build-image
     runs-on: ubuntu-latest
@@ -183,13 +158,13 @@ jobs:
           chmod +x defender
           ./defender --version
 
+      # CycloneDX SBOM は OS/言語の判別（purl）に使用する。
       - name: Run Defender for Cloud CLI image scan (MDVM) + SBOM
         run: |
           az acr login --name "$ACR_NAME"
           IMAGE="${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ github.sha }}"
           echo "Scanning image with Defender for Cloud CLI (MDVM): $IMAGE"
           ./defender scan image "$IMAGE" -o defender-mdvm.sarif
-          # OS/言語の判別（purl）用に CycloneDX SBOM も生成する
           ./defender scan sbom "$IMAGE" --sbom-format cyclonedx1.6-json -o sbom.json
 
       # MDVM はコンテナの脆弱性をイメージ参照に紐付けて報告するため、SARIF の location を
@@ -209,9 +184,6 @@ jobs:
           sarif_file: ${{ steps.anchor.outputs.sarif }}
           category: defender-mdvm
 
-  # ===========================================================================
-  # deploy-aca: スキャン済みイメージをステージング用 Azure Container App へデプロイ
-  # ===========================================================================
   deploy-aca:
     needs: image-security-scan
     runs-on: ubuntu-latest
@@ -289,9 +261,6 @@ jobs:
             echo "**URL:** ${{ steps.deploy.outputs.url }}"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  # ===========================================================================
-  # deploy-appservice: publish 済み bootJar をステージング用 Azure App Service へデプロイ
-  # ===========================================================================
   deploy-appservice:
     needs: build-jar
     runs-on: ubuntu-latest
@@ -320,11 +289,9 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # PR クローズ後などに空になった F1 プランは Azure に自動削除されることがある。
       - name: Ensure App Service plan exists
         run: |
-          # 空になった F1（Free）プランは Azure により自動削除されることがあるため
-          # （例: PR クローズ時にプレビュー Web App が削除されプランが空になる）、
-          # デプロイのたびにプランの存在を確認し、無ければ冪等に作成する。
           if az appservice plan show -n "$APP_SERVICE_PLAN" -g "$RESOURCE_GROUP" >/dev/null 2>&1; then
             echo "Reusing existing App Service plan: $APP_SERVICE_PLAN"
           else
@@ -338,6 +305,9 @@ jobs:
               --output none
           fi
 
+      # 古い az CLI のランタイムカタログでは Java 21 を直接指定できないため、
+      # Java 11 で作成後、カタログ検証を経ない linux-fx-version で Java 21 に切り替える。
+      # App Service は bootJar を app.jar にリネームして実行する。
       - name: Create or reuse staging web app and deploy jar
         id: deploy
         run: |
@@ -345,12 +315,6 @@ jobs:
             echo "Reusing existing staging web app: $WEBAPP_NAME"
           else
             echo "Creating staging web app: $WEBAPP_NAME"
-            # GitHub ホストランナーの az CLI はランタイムカタログが古く
-            # （JAVA|11-java11 までしか持たない）、create 時に Java 21 を直接指定すると
-            # 「not supported」で弾かれる。そこでまず Java 21 を試し、失敗した場合は
-            # カタログに存在する Java 11 で作成してから linux-fx-version で Java 21 を
-            # 強制する（linux-fx-version は生のパススルーでカタログ検証されず、
-            # App Service プラットフォーム側は Java 21 を提供するため動作する）。
             if ! az webapp create \
                   --name "$WEBAPP_NAME" \
                   --resource-group "$RESOURCE_GROUP" \
@@ -371,7 +335,6 @@ jobs:
                 --runtime "JAVA|11-java11" \
                 --output none
             fi
-            # 実行ランタイムを Java 21 に強制する
             az webapp config set \
               --name "$WEBAPP_NAME" \
               --resource-group "$RESOURCE_GROUP" \
@@ -379,7 +342,6 @@ jobs:
               --output none
           fi
 
-          # ステージング識別用タグを付与
           APP_ID=$(az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
           az tag update \
             --resource-id "$APP_ID" \
@@ -387,7 +349,6 @@ jobs:
             --tags Project=quiz-app Environment=staging \
             --output none
 
-          # bootJar をデプロイ（App Service が app.jar にリネームして実行）
           az webapp deploy \
             --name "$WEBAPP_NAME" \
             --resource-group "$RESOURCE_GROUP" \
