@@ -1,9 +1,5 @@
 name: Dependency Review
 
-# トリガー : main 宛ての Pull Request（作成 / 更新 / 再オープン）
-# 内容     : PR で追加・変更される依存関係を走査し、既知の脆弱性や
-#            ライセンス違反を検出して PR をゲートする。
-#
 # 注意 (Gradle 固有) :
 #   GitHub は Maven と異なり build.gradle(.kts) を自動解析できないため、
 #   PR の head コミットに対しても依存関係グラフを明示的に送信しないと
@@ -35,17 +31,13 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # PR の head コミットの Gradle 依存グラフを生成して GitHub へ送信する。
-      # これにより直後の Dependency Review が base との差分を解決できる。
       - name: Generate and submit dependency graph
         uses: gradle/actions/dependency-submission@v6.4.1
 
       - name: Dependency Review
         uses: actions/dependency-review-action@v5.0.0
         with:
-          # 中等度 (moderate) 以上の脆弱性が新規に持ち込まれた場合に失敗させる
           fail-on-severity: moderate
-          # 結果のサマリを PR コメントへ投稿（失敗時のみ）
           comment-summary-in-pr: on-failure
           # 送信直後はスナップショットの反映に遅延が出ることがあるためリトライする
           retry-on-snapshot-warnings: true

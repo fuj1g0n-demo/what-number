@@ -1,6 +1,6 @@
 ---
 name: azure-cicd-ops
-description: '本リポジトリの CI/CD（GitHub Actions + Azure）運用知識。6 本のワークフローの役割、PR ごとのプレビュー環境（Container Apps / App Service）、ステージングデプロイ、TTL クリーンアップ、必要な Actions 変数を定義する。WHEN: "CI が失敗", "プレビュー環境", "デプロイ", "ワークフローを変更", "GitHub Actions", CI/CD の調査・変更・運用を行うとき。'
+description: '本リポジトリの CI/CD（GitHub Actions + Azure）運用知識。9 本のワークフローの役割、PR ごとのプレビュー環境（Container Apps / App Service）、ステージングデプロイ、TTL クリーンアップ、必要な Actions 変数を定義する。WHEN: "CI が失敗", "プレビュー環境", "デプロイ", "ワークフローを変更", "GitHub Actions", CI/CD の調査・変更・運用を行うとき。'
 ---
 
 # CI/CD 運用（GitHub Actions + Azure）
@@ -11,12 +11,15 @@ description: '本リポジトリの CI/CD（GitHub Actions + Azure）運用知�
 
 | ワークフロー | 種別 | トリガー | 内容 |
 |---|---|---|---|
-| `ci-pr-local.yml` | CI | PR (main) | Build → Unit → Integration → System Test（ランナー内でローカル起動して検証）。スクリーンショット・テストレポートを artifact 化 |
+| `ci-pr-local.yml` | CI | PR (main) | build 後に Unit / Integration / System Test を並行実行（System Test はランナー内でアプリを起動） |
 | `ci-pr-remote.yml` | CI | PR (main) open/sync/close | PR ごとに Container App と App Service Web App のプレビュー環境を並行作成 → 固有 URL へデプロイ → E2E 実行 → URL を PR にコメント。クローズ時に削除 |
-| `cd-merge.yml` | CD | push (main) / 手動 | bootJar を Azure Artifacts + GitHub Packages へ発行し、ACA / App Service のステージング環境へ並行デプロイ。スモークチェック付き |
-| `cd-release.yml` | CD | 手動 | バージョン確定 → タグ付け → Maven / ACR 発行 → GitHub Release（`branching-release` skill 参照） |
-| `infra-bootstrap.yml` | セットアップ | 手動 | RG・ACR・マネージド ID・ACA 環境・App Service プランを作成（初回のみ） |
+| `cd-merge.yml` | CD | push (main) / 手動 | bootJar を Azure Artifacts + GitHub Packages へ発行し、ACA / App Service のステージング環境へ並行デプロイ。各環境で HTTP 200 を確認 |
+| `cd-release.yml` | CD | 手動 | 2 コミットでリリースタグを確定し、Maven / ACR へ発行して GitHub Release を作成。デプロイは行わない |
+| `infra-bootstrap.yml` | セットアップ | 手動 | 初回セットアップ用に RG・ACR・マネージド ID・ACA 環境・App Service プランを作成 |
 | `ttl-cleanup.yml` | 運用 | 15 分毎 / 手動 | TTL 期限切れ（最終 push から 1 時間）のプレビュー環境を削除 |
+| `dependency-submission.yml` | 依存関係 | push (main) / 手動 | Gradle の依存関係グラフを GitHub Dependency Graph へ送信 |
+| `dependency-review.yml` | 依存関係 | PR (main) | head の依存関係グラフを送信後、base との差分を確認 |
+| `codeql.yml` | セキュリティ | push (main) / PR (main) / 毎週 | GitHub Actions と Java を CodeQL で解析。現在の設定では Kotlin を解析しない |
 
 ## プレビュー環境の命名
 
@@ -35,4 +38,4 @@ description: '本リポジトリの CI/CD（GitHub Actions + Azure）運用知�
 
 1. `gh run list --branch <ブランチ> --limit 5` で対象 run を特定する
 2. `gh run view <run-id> --log-failed` で失敗ジョブのログを確認する
-3. System Test 失敗時は artifact（スクリーンショット・テストレポート）をダウンロードして確認する
+3. remote E2E 失敗時は `ci-pr-remote.yml` の artifact（スクリーンショット・テストレポート）をダウンロードして確認する
