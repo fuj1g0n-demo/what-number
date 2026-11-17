@@ -25,6 +25,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
     implementation("org.springframework.boot:spring-boot-starter-validation")
 
+    // ===== [SECURITY DEMO ONLY — 意図的に脆弱] =======================================
+    // Log4Shell (CVE-2021-44228 / CVE-2021-45046) を含む既知の脆弱な Log4j 2.14.1。
+    // Dependabot / GitHub Advanced Security による検出デモのために導入している。
+    // 本番では絶対に使用しないこと。デモ後はこの依存を必ず削除すること。
+    implementation("org.apache.logging.log4j:log4j-core:2.14.1")
+    implementation("org.apache.logging.log4j:log4j-api:2.14.1")
+    // ================================================================================
+
     // DevTools
     developmentOnly("org.springframework.boot:spring-boot-devtools")
 
