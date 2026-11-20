@@ -4,7 +4,7 @@
 
 ## 技術スタック
 
-- **言語**: Java 21（LTS）
+- **言語**: Java 21（LTS、最低 21.0.13.1+2）
 - **フレームワーク**: Spring Boot 3.4 + Thymeleaf（SSR）
 - **フロントエンド**: Bootstrap 5（CDN）
 - **データ管理**: JSON ファイル（起動時ロード）
@@ -12,7 +12,7 @@
 
 ## 前提条件
 
-- Java 21 以上
+- Java 21.0.13.1+2 以上（CVE-2026-114938 の修正を含む最低 Java 21 バージョン）
 
 ## ビルド・実行
 
@@ -160,6 +160,7 @@ flowchart TD
 - PR ごとのローカル CI は Azure に接続せず、アプリのテストを実行します。プレビュー CI は ACA と App Service のデプロイ設定を別々に検証します。
 - ACA のイメージスキャンは Defender for Cloud CLI で SARIF と CycloneDX SBOM を生成します。SBOM は OS と言語の識別に使います。`sarif-dockerfile-anchor` はイメージ参照で報告された脆弱性を Dockerfile の行に対応付け、Code Scanning で PR の差分に注釈します。
 - GitHub-hosted runner の Azure CLI ランタイム一覧が Java 21 を認識しない場合、ワークフローは Java 11 で Web App を作成し、`linux-fx-version` を Java 21 に設定します。この手順は作成時のランタイム指定に対する回避策です。
+- App Service のプレビュー／ステージング Web App は Platform release channel を `Latest` に設定し、Java ランタイムの更新を早く受け取るよう要求します。Azure は特定の Java パッチ適用を保証しないため、実環境の Java バージョンは別途確認してください。
 - App Service プランは Web App がなくなると削除される場合があります。`cd-merge.yml` はデプロイ前にプランを確認し、存在しない場合は再作成します。
 - プレビュー環境には最後の PR 更新から1時間後の `TTLExpire` タグを付けます。`ttl-cleanup.yml` は15分ごとにタグを確認し、期限切れの Container App と Web App を削除します。PR のクローズ時は `ci-pr-remote.yml` が両方をすぐ削除します。
 - `infra-bootstrap.yml` は既存の ACR、マネージド ID、ACA 環境、App Service プランを再利用します。マネージド ID への ACR Pull ロール割り当てでは、Microsoft Entra ID への反映を待って10秒間隔で最大6回再試行します。

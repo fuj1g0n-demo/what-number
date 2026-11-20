@@ -38,7 +38,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
-          java-version: '21'
+          java-version-file: .java-version
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -341,6 +341,12 @@ jobs:
               --linux-fx-version "JAVA|21-java21" \
               --output none
           fi
+
+          az webapp update \
+            --name "$WEBAPP_NAME" \
+            --resource-group "$RESOURCE_GROUP" \
+            --platform-release-channel Latest \
+            --output none
 
           APP_ID=$(az webapp show -n "$WEBAPP_NAME" -g "$RESOURCE_GROUP" --query id -o tsv)
           az tag update \

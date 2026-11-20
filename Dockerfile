@@ -4,7 +4,7 @@
 # Build stage: Spring Boot 実行可能 JAR をビルドする
 # （Gradle バージョンは gradle-wrapper.properties を単一正本として wrapper が解決）
 # ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jdk AS build
+FROM mcr.microsoft.com/openjdk/jdk:21-ubuntu AS build
 WORKDIR /workspace
 
 # Gradle wrapper とビルドスクリプトを先にコピー（依存解決のレイヤーキャッシュを効かせる）
@@ -22,10 +22,7 @@ COPY app/src app/src
 RUN ./gradlew --no-daemon :app:bootJar \
  && cp "$(ls app/build/libs/*.jar | grep -v 'plain')" /app.jar
 
-# ---------------------------------------------------------------------------
-# Runtime stage: 軽量な JRE で JAR を実行する
-# ---------------------------------------------------------------------------
-FROM eclipse-temurin:21-jre AS runtime
+FROM mcr.microsoft.com/openjdk/jdk:21-ubuntu AS runtime
 WORKDIR /app
 
 # 非 root ユーザーで実行する
