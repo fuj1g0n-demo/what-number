@@ -24,7 +24,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
-          java-version: '21'
+          java-version-file: .java-version
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -43,7 +43,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
-          java-version: '21'
+          java-version-file: .java-version
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -62,7 +62,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
-          java-version: '21'
+          java-version-file: .java-version
           distribution: 'temurin'
 
       - name: Setup Gradle
@@ -81,7 +81,7 @@ jobs:
       - name: Set up JDK 21
         uses: actions/setup-java@v5.7.0
         with:
-          java-version: '21'
+          java-version-file: .java-version
           distribution: 'temurin'
 
       - name: Setup Gradle

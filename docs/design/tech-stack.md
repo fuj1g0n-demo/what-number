@@ -11,12 +11,14 @@
 
 | 項目 | 選定 | バージョン | 選定理由 |
 |---|---|---|---|
-| 言語 | Java | 21（LTS） | 長期サポート、Record・Sealed Classes 等の最新言語機能を活用可能 |
+| 言語 | Java | 21（LTS、最低 21.0.13.1+2） | 長期サポート、Record・Sealed Classes 等の言語機能を活用可能 |
 | ランタイム | JVM | — | Java 21 対応の JVM |
 
 ### Java 21 を選定する根拠
 
-- 2023年9月リリースの最新 LTS（Long Term Support）バージョン
+- Java 21 は LTS リリースであり、最新の LTS メジャーバージョンという意味ではない
+- CI は `.java-version` で CVE-2026-114938 修正済みの Temurin 21.0.13.1+2 以上を指定する
+- Docker は Microsoft OpenJDK の `21-ubuntu` タグを使い、Java 21 の更新を追従する
 - Virtual Threads（Project Loom）により軽量な並行処理が可能
 - Pattern Matching、Record Patterns 等でボイラープレートを削減
 - Spring Boot 3.x が Java 17+ を必須としており、21 は推奨バージョン
@@ -221,7 +223,7 @@ PR レビューではスクリーンショットで画面を確認し、HTML レ
 
 | 技術要素 | バージョン |
 |---|---|
-| Java | 21（LTS） |
+| Java | 21（LTS、最低 21.0.13.1+2） |
 | Spring Boot | 3.4.x |
 | Thymeleaf | Spring Boot BOM 管理 |
 | Gradle | 8.x |
